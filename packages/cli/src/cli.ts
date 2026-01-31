@@ -101,15 +101,85 @@ async function tryLoadTUI(): Promise<LaunchTUIFunction | null> {
   }
 }
 
+function findNativeTUIBinary(): string | null {
+  const isWindows = process.platform === "win32";
+  const binaryName = isWindows ? "tokscale-tui.exe" : "tokscale-tui";
+  
+  const possiblePaths = [
+    path.join(__dirname, "..", "..", "core", "target", "release", binaryName),
+    path.join(__dirname, "..", "native", binaryName),
+    path.join(__dirname, "..", "..", "native", binaryName),
+  ];
+  
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
+  }
+  
+  return null;
+}
+
+async function trySpawnNativeTUI(options?: TUIOptions): Promise<boolean> {
+  const binaryPath = findNativeTUIBinary();
+  if (!binaryPath) {
+    return false;
+  }
+  
+  const args: string[] = [];
+  
+  if (options?.enabledSources) {
+    for (const source of options.enabledSources) {
+      args.push(`--${source}`);
+    }
+  }
+  
+  return new Promise((resolve) => {
+    const child = spawn(binaryPath, args, {
+      stdio: "inherit",
+      env: process.env,
+    });
+    
+    child.on("error", () => {
+      resolve(false);
+    });
+    
+    child.on("close", (code) => {
+      resolve(code === 0);
+    });
+  });
+}
+
 function showTUIUnavailableMessage(): void {
   console.log(pc.yellow("\n  TUI mode requires Bun runtime."));
   console.log(pc.gray("  OpenTUI's native modules are not compatible with Node.js."));
   console.log();
   console.log(pc.white("  Options:"));
   console.log(pc.gray("  • Use 'bunx tokscale' instead of 'npx tokscale'"));
-  // console.log(pc.gray("  • Use '--light' flag for legacy CLI table output"));
   console.log(pc.gray("  • Use '--json' flag for JSON output"));
   console.log();
+}
+
+async function launchTUIWithFallback(options?: TUIOptions): Promise<boolean> {
+  const openTUILauncher = await tryLoadTUI();
+  if (openTUILauncher) {
+    try {
+      await openTUILauncher(options);
+      return true;
+    } catch (error) {
+      if (process.env.DEBUG) {
+        console.error("OpenTUI launch error:", error);
+      }
+    }
+  }
+  
+  const nativeSuccess = await trySpawnNativeTUI(options);
+  if (nativeSuccess) {
+    return true;
+  }
+  
+  showTUIUnavailableMessage();
+  return false;
 }
 
 interface FilterOptions {
@@ -460,11 +530,8 @@ async function main() {
       } else if (options.light) {
         await showMonthlyReport(options, { spinner: options.spinner });
       } else {
-        const launchTUI = await tryLoadTUI();
-        if (launchTUI) {
-          await launchTUI(buildTUIOptions(options, "daily"));
-        } else {
-          showTUIUnavailableMessage();
+        const launched = await launchTUIWithFallback(buildTUIOptions(options, "daily"));
+        if (!launched) {
           await showMonthlyReport(options, { spinner: options.spinner });
         }
       }
@@ -497,11 +564,8 @@ async function main() {
       } else if (options.light) {
         await showModelReport(options, { spinner: options.spinner });
       } else {
-        const launchTUI = await tryLoadTUI();
-        if (launchTUI) {
-          await launchTUI(buildTUIOptions(options, "model"));
-        } else {
-          showTUIUnavailableMessage();
+        const launched = await launchTUIWithFallback(buildTUIOptions(options, "model"));
+        if (!launched) {
           await showModelReport(options, { spinner: options.spinner });
         }
       }
@@ -836,11 +900,8 @@ async function main() {
     .option("--until <date>", "End date (YYYY-MM-DD)")
     .option("--year <year>", "Filter to specific year")
     .action(async (options) => {
-      const launchTUI = await tryLoadTUI();
-      if (launchTUI) {
-        await launchTUI(buildTUIOptions(options));
-      } else {
-        showTUIUnavailableMessage();
+      const launched = await launchTUIWithFallback(buildTUIOptions(options));
+      if (!launched) {
         process.exit(1);
       }
     });
@@ -973,11 +1034,8 @@ async function main() {
     } else if (opts.light) {
       await showModelReport(opts, { spinner: opts.spinner });
     } else {
-      const launchTUI = await tryLoadTUI();
-      if (launchTUI) {
-        await launchTUI(buildTUIOptions(opts));
-      } else {
-        showTUIUnavailableMessage();
+      const launched = await launchTUIWithFallback(buildTUIOptions(opts));
+      if (!launched) {
         await showModelReport(opts, { spinner: opts.spinner });
       }
     }

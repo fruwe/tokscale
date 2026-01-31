@@ -12,6 +12,7 @@ mod parser;
 mod pricing;
 mod scanner;
 mod sessions;
+pub mod tui;
 
 pub use aggregator::*;
 pub use parser::*;
