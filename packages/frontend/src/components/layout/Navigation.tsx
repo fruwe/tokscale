@@ -253,6 +253,9 @@ export function Navigation() {
       <NavItemLink href="/leaderboard" $isActive={pathname === "/leaderboard"}>
         Leaderboard
       </NavItemLink>
+      <NavItemLink href="/models" $isActive={pathname === "/models"}>
+        Models
+      </NavItemLink>
       <NavItemLink href="/profile" $isActive={pathname === "/profile" || pathname.startsWith("/u/")}>
         Profile
       </NavItemLink>
