@@ -95,7 +95,9 @@ export default function ProfilePageClient({ initialData, username }: ProfilePage
           setUserGroups([]);
         }
       } finally {
-        setIsGroupsLoading(false);
+        if (!abortController.signal.aborted) {
+          setIsGroupsLoading(false);
+        }
       }
     };
 

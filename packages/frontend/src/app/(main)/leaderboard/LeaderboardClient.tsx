@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, memo, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "nextjs-toploader/app";
 import styled from "styled-components";
 import { CopyIcon, CheckIcon } from "@/components/ui/Icons";
@@ -499,7 +500,7 @@ const GroupCTASection = styled.div`
   justify-content: flex-end;
 `;
 
-const GroupCTAButton = styled.a`
+const GroupCTAButton = styled(Link)`
   display: inline-flex;
   align-items: center;
   gap: 8px;
