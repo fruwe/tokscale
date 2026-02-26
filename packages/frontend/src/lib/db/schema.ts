@@ -45,6 +45,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
   apiTokens: many(apiTokens),
   submissions: many(submissions),
+  groupMemberships: many(groupMembers),
+  createdGroups: many(groups),
 }));
 
 // ============================================================================
@@ -268,6 +270,138 @@ export const dailyBreakdownRelations = relations(dailyBreakdown, ({ one }) => ({
 }));
 
 // ============================================================================
+// GROUPS
+// ============================================================================
+export const groupRole = ["owner", "admin", "member"] as const;
+export type GroupRole = (typeof groupRole)[number];
+
+export const groups = pgTable(
+  "groups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 100 }).notNull(),
+    slug: varchar("slug", { length: 100 }).notNull().unique(),
+    description: text("description"),
+    avatarUrl: text("avatar_url"),
+    isPublic: boolean("is_public").notNull().default(true),
+    inviteCode: varchar("invite_code", { length: 32 }).unique(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("idx_groups_slug").on(table.slug),
+    index("idx_groups_created_by").on(table.createdBy),
+    index("idx_groups_is_public").on(table.isPublic),
+  ]
+);
+
+export const groupsRelations = relations(groups, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [groups.createdBy],
+    references: [users.id],
+  }),
+  members: many(groupMembers),
+  invites: many(groupInvites),
+}));
+
+// ============================================================================
+// GROUP MEMBERS
+// ============================================================================
+export const groupMembers = pgTable(
+  "group_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 10 }).notNull().default("member").$type<GroupRole>(),
+    invitedBy: uuid("invited_by").references(() => users.id, { onDelete: "set null" }),
+    joinedAt: timestamp("joined_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("idx_group_members_group_id").on(table.groupId),
+    index("idx_group_members_user_id").on(table.userId),
+    unique("group_members_group_user_unique").on(table.groupId, table.userId),
+  ]
+);
+
+export const groupMembersRelations = relations(groupMembers, ({ one }) => ({
+  group: one(groups, {
+    fields: [groupMembers.groupId],
+    references: [groups.id],
+  }),
+  user: one(users, {
+    fields: [groupMembers.userId],
+    references: [users.id],
+  }),
+  inviter: one(users, {
+    fields: [groupMembers.invitedBy],
+    references: [users.id],
+  }),
+}));
+
+// ============================================================================
+// GROUP INVITES
+// ============================================================================
+export const groupInviteStatus = ["pending", "accepted", "declined", "expired"] as const;
+export type GroupInviteStatus = (typeof groupInviteStatus)[number];
+
+export const groupInvites = pgTable(
+  "group_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    invitedUsername: varchar("invited_username", { length: 39 }),
+    invitedUserId: uuid("invited_user_id").references(() => users.id, { onDelete: "cascade" }),
+    invitedBy: uuid("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 10 }).notNull().default("member").$type<GroupRole>(),
+    status: varchar("status", { length: 10 }).notNull().default("pending").$type<GroupInviteStatus>(),
+    token: varchar("token", { length: 64 }).notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("idx_group_invites_group_id").on(table.groupId),
+    index("idx_group_invites_invited_user_id").on(table.invitedUserId),
+    index("idx_group_invites_token").on(table.token),
+    index("idx_group_invites_status").on(table.status),
+  ]
+);
+
+export const groupInvitesRelations = relations(groupInvites, ({ one }) => ({
+  group: one(groups, {
+    fields: [groupInvites.groupId],
+    references: [groups.id],
+  }),
+  invitedUser: one(users, {
+    fields: [groupInvites.invitedUserId],
+    references: [users.id],
+  }),
+  inviter: one(users, {
+    fields: [groupInvites.invitedBy],
+    references: [users.id],
+  }),
+}));
+
+// ============================================================================
 // TYPE EXPORTS
 // ============================================================================
 export type User = typeof users.$inferSelect;
@@ -282,3 +416,9 @@ export type Submission = typeof submissions.$inferSelect;
 export type NewSubmission = typeof submissions.$inferInsert;
 export type DailyBreakdown = typeof dailyBreakdown.$inferSelect;
 export type NewDailyBreakdown = typeof dailyBreakdown.$inferInsert;
+export type Group = typeof groups.$inferSelect;
+export type NewGroup = typeof groups.$inferInsert;
+export type GroupMember = typeof groupMembers.$inferSelect;
+export type NewGroupMember = typeof groupMembers.$inferInsert;
+export type GroupInvite = typeof groupInvites.$inferSelect;
+export type NewGroupInvite = typeof groupInvites.$inferInsert;
