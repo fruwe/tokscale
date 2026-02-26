@@ -68,6 +68,10 @@ export async function PATCH(
       .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, userId)))
       .returning();
 
+    if (!updated) {
+      return NextResponse.json({ error: "User is no longer a member" }, { status: 404 });
+    }
+
     return NextResponse.json(updated);
   } catch (error) {
     console.error("Change role error:", error);

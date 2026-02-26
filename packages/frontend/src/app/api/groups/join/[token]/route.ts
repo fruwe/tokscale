@@ -42,6 +42,10 @@ export async function POST(
 
     const { invite, group } = inviteResult[0];
 
+    if (invite.invitedUserId && invite.invitedUserId !== session.id) {
+      return NextResponse.json({ error: "This invite is not for you" }, { status: 403 });
+    }
+
     // Check if already a member
     const existingMember = await db
       .select({ id: groupMembers.id })

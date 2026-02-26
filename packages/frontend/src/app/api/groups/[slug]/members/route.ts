@@ -100,6 +100,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Cannot remove the group owner" }, { status: 403 });
     }
 
+    if (targetMember[0].role === "admin" && membership.role === "admin") {
+      return NextResponse.json({ error: "Only the owner can remove admins" }, { status: 403 });
+    }
+
     await db
       .delete(groupMembers)
       .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, body.userId)));

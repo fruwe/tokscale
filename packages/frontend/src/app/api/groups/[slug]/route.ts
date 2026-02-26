@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db, groups, groupMembers } from "@/lib/db";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getSessionFromHeader } from "@/lib/auth/session";
 import { generateUniqueSlug } from "@/lib/groups/slug";
 import { getGroupMembership, requireGroupRole } from "@/lib/groups/permissions";
@@ -147,7 +147,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: "Only the owner can delete this group" }, { status: 403 });
     }
 
-    await db.delete(groups).where(and(eq(groups.id, targetGroup.id), eq(groups.createdBy, session.id)));
+    await db.delete(groups).where(eq(groups.id, targetGroup.id));
 
     return NextResponse.json({ success: true });
   } catch (error) {
