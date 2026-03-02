@@ -2042,6 +2042,25 @@ fn format_currency(n: f64) -> String {
     format!("${:.2}", n)
 }
 
+/// Format a URL as an OSC 8 clickable hyperlink for supported terminals.
+/// Falls back to plain URL text when stdout is not a terminal.
+fn osc8_link(url: &str) -> String {
+    if std::io::stdout().is_terminal() {
+        format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, url)
+    } else {
+        url.to_string()
+    }
+}
+/// Format text as an OSC 8 clickable hyperlink with custom display text.
+/// Falls back to plain display text when stdout is not a terminal.
+fn osc8_link_with_text(url: &str, text: &str) -> String {
+    if std::io::stdout().is_terminal() {
+        format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, text)
+    } else {
+        text.to_string()
+    }
+}
+
 fn dim_borders(table_str: &str) -> String {
     let border_chars: &[char] = &['┌', '─', '┬', '┐', '│', '├', '┼', '┤', '└', '┴', '┘'];
     let mut result = String::with_capacity(table_str.len() * 2);
@@ -2624,7 +2643,11 @@ fn prompt_star_repo(username: &str) -> Result<()> {
     println!("{}", "  Help us grow! \u{2b50}".cyan());
     println!(
         "{}",
-        "  Starring bunx tokscale@latest helps others discover the project.\n".bright_black()
+        "  Starring tokscale helps others discover the project.".bright_black()
+    );
+    println!(
+        "  {}\n",
+        osc8_link("https://github.com/junhoyeo/tokscale").bright_black()
     );
     print!(
         "{}",
@@ -2819,7 +2842,10 @@ fn run_submit_command(
         Some(creds) => creds,
         None => {
             eprintln!("\n  {}", "Not logged in.".yellow());
-            eprintln!("{}", "  Run 'tokscale login' first.\n".bright_black());
+            eprintln!(
+                "{}",
+                "  Run 'bunx tokscale@latest login' first.\n".bright_black()
+            );
             std::process::exit(1);
         }
     };
@@ -2998,9 +3024,12 @@ fn run_submit_command(
             println!();
             println!(
                 "{}",
-                format!(
-                    "  View your profile: {}/u/{}",
-                    api_url, credentials.username
+                osc8_link_with_text(
+                    &format!("{}/u/{}", api_url, credentials.username),
+                    &format!(
+                        "  View your profile: {}/u/{}",
+                        api_url, credentials.username
+                    ),
                 )
                 .cyan()
             );

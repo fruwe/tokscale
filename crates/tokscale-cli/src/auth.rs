@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::IsTerminal;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -153,7 +154,7 @@ pub async fn login() -> Result<()> {
         );
         println!(
             "{}",
-            "  Run 'tokscale logout' to sign out first.\n".bright_black()
+            "  Run 'bunx tokscale@latest logout' to sign out first.\n".bright_black()
         );
         return Ok(());
     }
@@ -183,7 +184,15 @@ pub async fn login() -> Result<()> {
 
     println!();
     println!("{}", "  Open this URL in your browser:".white());
-    println!("{}", format!("  {}\n", device_data.verification_url).cyan());
+    let url_display = if std::io::stdout().is_terminal() {
+        format!(
+            "\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
+            device_data.verification_url, device_data.verification_url
+        )
+    } else {
+        device_data.verification_url.clone()
+    };
+    println!("{}", format!("  {}\n", url_display).cyan());
     println!("{}", "  Enter this code:".white());
     println!(
         "{}\n",
@@ -228,7 +237,7 @@ pub async fn login() -> Result<()> {
                             );
                             println!(
                                 "{}",
-                                "  You can now use 'tokscale submit' to share your usage.\n"
+                                "  You can now use 'bunx tokscale@latest submit' to share your usage.\n"
                                     .bright_black()
                             );
                             return Ok(());
@@ -291,7 +300,7 @@ pub fn whoami() -> Result<()> {
         println!("\n  {}", "Not logged in.".yellow());
         println!(
             "{}",
-            "  Run 'tokscale login' to authenticate.\n".bright_black()
+            "  Run 'bunx tokscale@latest login' to authenticate.\n".bright_black()
         );
         return Ok(());
     };
