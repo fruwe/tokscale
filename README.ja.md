@@ -2,11 +2,19 @@
 
 <div align="center">
 
-[![Tokscale](./.github/assets/hero.png)](https://tokscale.ai)
+[![Tokscale](./.github/assets/hero-v2.png)](https://tokscale.ai)
 
 </div>
 
 > 複数のプラットフォームでAIコーディングアシスタントのトークン使用量とコストを追跡するための高性能CLIツールと可視化ダッシュボード。
+
+> [!TIP]
+>
+> **v2（ratatui リライト + Windows サポート）近日公開！** <br />
+> 毎週新しいオープンソースプロジェクトを公開しています。お見逃しなく。
+>
+> | [<img alt="GitHub Follow" src="https://img.shields.io/github/followers/junhoyeo?style=flat-square&logo=github&labelColor=black&color=24292f" width="156px" />](https://github.com/junhoyeo) | GitHubで[@junhoyeo](https://github.com/junhoyeo)をフォローして、他のプロジェクトもチェックしてください。AI、インフラ、その他様々な分野で開発しています。 |
+> | :-----| :----- |
 
 <div align="center">
 
@@ -54,7 +62,8 @@
 | <img width="48px" src=".github/assets/client-droid.png" alt="Droid" /> | [Droid (Factory Droid)](https://factory.ai/) | `~/.factory/sessions/` | ✅ 対応 |
 | <img width="48px" src=".github/assets/client-pi.png" alt="Pi" /> | [Pi](https://github.com/badlogic/pi-mono) | `~/.pi/agent/sessions/` | ✅ 対応 |
 | <img width="48px" src=".github/assets/client-kimi.png" alt="Kimi" /> | [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) | `~/.kimi/sessions/` | ✅ 対応 |
-| <img width="48px" src=".github/assets/client-synthetic.png" alt="Synthetic" /> | [Synthetic](https://synthetic.new/) | 他のソースから`hf:`モデルプレフィックスまたは`synthetic`プロバイダーで再帰（+ Octofriend: `~/.local/share/octofriend/sqlite.db`） | ✅ 対応 |
+| <img width="48px" src=".github/assets/client-qwen.png" alt="Qwen" /> | [Qwen CLI](https://github.com/QwenLM/qwen-cli) | `~/.qwen/projects/` | ✅ 対応 |
+| <img width="48px" src=".github/assets/client-synthetic.png" alt="Synthetic" /> | [Synthetic](https://synthetic.new/) | `hf:`モデルや`synthetic`プロバイダを検出して他ソースから再帰属（+ Octofriend: `~/.local/share/octofriend/sqlite.db`） | ✅ 対応 |
 
 [🚅 LiteLLMの価格データ](https://github.com/BerriAI/litellm)を使用してリアルタイム価格計算を提供し、階層型価格モデルとキャッシュトークン割引をサポートしています。
 
@@ -116,7 +125,7 @@ AI支援開発の時代において、**トークンは新しいエネルギー*
   - 9色テーマのGitHubスタイル貢献グラフ
   - リアルタイムフィルタリングとソート
   - ゼロフリッカーレンダリング（ネイティブZigエンジン）
-- **マルチプラットフォームサポート** - OpenCode、Claude Code、Codex CLI、Cursor IDE、Gemini CLI、Amp、Droid、OpenClaw、Pi、Kimi CLI、Synthetic全体の使用量追跡
+- **マルチプラットフォームサポート** - OpenCode、Claude Code、Codex CLI、Cursor IDE、Gemini CLI、Amp、Droid、OpenClaw、Pi、Kimi CLI、Qwen CLI、Synthetic全体の使用量追跡
 - **リアルタイム価格** - 1時間ディスクキャッシュ付きでLiteLLMから現在の価格を取得；OpenRouter自動フォールバックと新規モデル向けCursor価格サポート
 - **詳細な内訳** - 入力、出力、キャッシュ読み書き、推論トークン追跡
 - **ネイティブRustコア** - 10倍高速な処理のため、すべての解析と集計をRustで実行
@@ -218,8 +227,9 @@ tokscale models --json > report.json   # ファイルに保存
 - **キーボードナビゲーション**:
   - `1-4`または`←/→/Tab`: ビュー切り替え
   - `↑/↓`: リスト操作
-  - `c/n/t`: コスト/名前/トークンでソート
-  - `1-0`, `-`: ソーストグル（OpenCode/Claude/Codex/Cursor/Gemini/Amp/Droid/OpenClaw/Pi/Kimi/Synthetic）
+  - `c/d/t`: コスト/日付/トークンでソート
+  - `s`: ソース選択ダイアログを開く
+  - `g`: グループ基準選択ダイアログを開く（モデル、クライアント+モデル、クライアント+プロバイダー+モデル）
   - `p`: 9色テーマを循環
   - `r`: データ更新
   - `e`: JSONにエクスポート
@@ -227,6 +237,38 @@ tokscale models --json > report.json   # ファイルに保存
 - **マウスサポート**: タブ、ボタン、フィルターをクリック
 - **テーマ**: Green、Halloween、Teal、Blue、Pink、Purple、Orange、Monochrome、YlGnBu
 - **設定の永続化**: テーマ設定は`~/.config/tokscale/tui-settings.json`に保存
+
+### グループ基準戦略
+
+TUIで`g`を押すか、`--light`/`--json`モードで`--group-by`を使用してモデル行の集計方法を制御します：
+
+| 戦略 | フラグ | TUIデフォルト | 効果 |
+|------|--------|-------------|------|
+| **モデル** | `--group-by model` | ✅ | モデルごとに1行 — すべてのクライアントとプロバイダーを統合 |
+| **クライアント + モデル** | `--group-by client,model` | | クライアント-モデルペアごとに1行 |
+| **クライアント + プロバイダー + モデル** | `--group-by client,provider,model` | | 最も詳細 — 統合なし |
+
+**`--group-by model`**（最も統合）
+
+| クライアント | プロバイダー | モデル | コスト |
+|------------|------------|--------|--------|
+| OpenCode, Claude, Amp | github-copilot, anthropic | claude-opus-4-5 | $2,424 |
+| OpenCode, Claude | anthropic, github-copilot | claude-sonnet-4-5 | $1,332 |
+
+**`--group-by client,model`**（CLIデフォルト）
+
+| クライアント | プロバイダー | モデル | コスト |
+|------------|------------|--------|--------|
+| OpenCode | github-copilot, anthropic | claude-opus-4-5 | $1,368 |
+| Claude | anthropic | claude-opus-4-5 | $970 |
+
+**`--group-by client,provider,model`**（最も詳細）
+
+| クライアント | プロバイダー | モデル | コスト |
+|------------|------------|--------|--------|
+| OpenCode | github-copilot | claude-opus-4-5 | $1,200 |
+| OpenCode | anthropic | claude-opus-4-5 | $168 |
+| Claude | anthropic | claude-opus-4-5 | $970 |
 
 ### プラットフォーム別フィルタリング
 
@@ -249,7 +291,10 @@ tokscale --cursor
 # Kimi CLIの使用量のみ表示
 tokscale --kimi
 
-# Synthetic（synthetic.new）の使用量のみ表示
+# Qwen CLIの使用量のみ表示
+tokscale --qwen
+
+# Synthetic (synthetic.new) の使用量のみ表示
 tokscale --synthetic
 
 # フィルターを組み合わせ
@@ -482,7 +527,7 @@ tokscale sources --json
 - **インタラクティブツールチップ**: ホバーで詳細な日別内訳を表示
 - **日別内訳パネル**: クリックでソース別、モデル別の詳細を確認
 - **年別フィルタリング**: 年間を移動
-- **ソースフィルタリング**: プラットフォーム別フィルター（OpenCode、Claude、Codex、Cursor、Gemini、Amp、Droid、OpenClaw、Pi、Kimi、Synthetic）
+- **ソースフィルタリング**: プラットフォーム別フィルター（OpenCode、Claude、Codex、Cursor、Gemini、Amp、Droid、OpenClaw、Pi、Kimi、Qwen、Synthetic）
 - **統計パネル**: 総コスト、トークン、活動日数、連続記録
 - **FOUC防止**: Reactハイドレーション前にテーマを適用（フラッシュなし）
 
@@ -745,7 +790,8 @@ AIコーディングツールはクロスプラットフォームの場所にセ
 | Droid | `~/.factory/` | `%USERPROFILE%\.factory\` | すべてのプラットフォームで同じパス |
 | Pi | `~/.pi/` | `%USERPROFILE%\.pi\` | すべてのプラットフォームで同じパス |
 | Kimi CLI | `~/.kimi/` | `%USERPROFILE%\.kimi\` | すべてのプラットフォームで同じパス |
-| Synthetic | 他のソースから再帰 | 他のソースから再帰 | `hf:`モデルプレフィックス + `synthetic`プロバイダーで検出 |
+| Qwen CLI | `~/.qwen/` | `%USERPROFILE%\.qwen\` | すべてのプラットフォームで同じパス |
+| Synthetic | 他ソースから再帰属 | 他ソースから再帰属 | `hf:`モデル + `synthetic`プロバイダを検出 |
 
 > **注**: Windowsでは`~`は`%USERPROFILE%`に展開されます（例：`C:\Users\ユーザー名`）。これらのツールは`%APPDATA%`のようなWindowsネイティブパスではなく、クロスプラットフォームの一貫性のためにUnixスタイルのパス（`.local/share`など）を意図的に使用しています。
 
@@ -928,16 +974,23 @@ StatusUpdate メッセージを含む wire.jsonl 形式：
 {"timestamp": 1770983426.420942, "message": {"type": "StatusUpdate", "payload": {"token_usage": {"input_other": 1562, "output": 2463, "input_cache_read": 0, "input_cache_creation": 0}, "message_id": "chatcmpl-xxx"}}}
 ```
 
-### Synthetic（synthetic.new）
+### Qwen CLI
 
-Synthetic の使用量は、既存のエージェントセッションファイルの**後処理**によって検出されます。[synthetic.new](https://synthetic.new/)をAPIゲートウェイとして使用したメッセージは以下で識別されます：
+場所: `~/.qwen/projects/{PROJECT_PATH}/chats/{CHAT_ID}.jsonl`
 
-- **モデルプレフィックス**: `hf:`（例：`hf:moonshotai/Kimi-K2.5`）、`accounts/fireworks/`、`accounts/together/`
-- **プロバイダーID**: `synthetic`、`glhf`、`octofriend`
+形式: JSONL — 1行に1つのJSONオブジェクト、各オブジェクトに`type`、`model`、`timestamp`、`sessionId`、`usageMetadata`フィールドを含む。
 
-これらのメッセージは元のソース（例：OpenCode）から`synthetic`ソースに再帰されます。モデル名は正規化されます（例：`hf:moonshotai/Kimi-K2.5` → `kimi-k2.5`）。
+トークンフィールド（`usageMetadata`から）:
+- `promptTokenCount` → 入力トークン
+- `candidatesTokenCount` → 出力トークン
+- `thoughtsTokenCount` → 推論/思考トークン
+- `cachedContentTokenCount` → キャッシュされた入力トークン
 
-**Octofriend**: Octofriend CLIセッションの `~/.local/share/octofriend/sqlite.db` もスキャンします。
+### Synthetic (synthetic.new)
+
+Synthetic は他ソースのメッセージを後処理で再帰属します。`hf:`プレフィックスのモデル ID または `synthetic` / `glhf` / `octofriend` プロバイダを検出した場合、ソースを `synthetic` として扱います。
+
+また `~/.local/share/octofriend/sqlite.db` を検出し、トークン情報を持つレコードを取り込みます。
 
 ## 価格
 
@@ -949,7 +1002,7 @@ Tokscaleは[LiteLLMの価格データベース](https://github.com/BerriAI/litel
 
 **キャッシュ**: 価格データは1時間TTLでディスクにキャッシュされ、高速な起動を確保します：
 - LiteLLMキャッシュ: `~/.cache/tokscale/pricing-litellm.json`
-- OpenRouterキャッシュ: `~/.cache/tokscale/pricing-openrouter.json`（増分式、使用したモデルのみキャッシュ）
+- OpenRouterキャッシュ: `~/.cache/tokscale/pricing-openrouter.json`（サポート対象プロバイダーのモデル作成者価格をキャッシュ）
 
 価格には以下が含まれます：
 - 入力トークン
