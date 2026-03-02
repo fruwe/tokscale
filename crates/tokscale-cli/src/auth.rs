@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
 use std::io::IsTerminal;
+use std::io::Write;
 use std::path::PathBuf;
 
 fn home_dir() -> Result<PathBuf> {
@@ -185,7 +185,10 @@ pub async fn login() -> Result<()> {
     println!();
     println!("{}", "  Open this URL in your browser:".white());
     let url_display = if std::io::stdout().is_terminal() {
-        format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", device_data.verification_url, device_data.verification_url)
+        format!(
+            "\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
+            device_data.verification_url, device_data.verification_url
+        )
     } else {
         device_data.verification_url.clone()
     };

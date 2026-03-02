@@ -2042,7 +2042,6 @@ fn format_currency(n: f64) -> String {
     format!("${:.2}", n)
 }
 
-
 /// Format a URL as an OSC 8 clickable hyperlink for supported terminals.
 /// Falls back to plain URL text when stdout is not a terminal.
 fn osc8_link(url: &str) -> String {
@@ -2843,7 +2842,10 @@ fn run_submit_command(
         Some(creds) => creds,
         None => {
             eprintln!("\n  {}", "Not logged in.".yellow());
-            eprintln!("{}", "  Run 'bunx tokscale@latest login' first.\n".bright_black());
+            eprintln!(
+                "{}",
+                "  Run 'bunx tokscale@latest login' first.\n".bright_black()
+            );
             std::process::exit(1);
         }
     };
@@ -3024,7 +3026,10 @@ fn run_submit_command(
                 "{}",
                 osc8_link_with_text(
                     &format!("{}/u/{}", api_url, credentials.username),
-                    &format!("  View your profile: {}/u/{}", api_url, credentials.username),
+                    &format!(
+                        "  View your profile: {}/u/{}",
+                        api_url, credentials.username
+                    ),
                 )
                 .cyan()
             );
