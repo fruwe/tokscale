@@ -378,6 +378,7 @@ impl TryFrom<CachedUsageData> for UsageData {
             models: u.models.into_iter().map(|m| m.into()).collect(),
             agents: u.agents.into_iter().map(|a| a.into()).collect(),
             daily: daily?,
+            hourly: Vec::new(),
             graph: graph.transpose()?,
             total_tokens: u.total_tokens,
             total_cost: u.total_cost,
