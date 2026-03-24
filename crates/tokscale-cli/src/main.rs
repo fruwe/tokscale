@@ -2240,6 +2240,8 @@ fn run_clients_command(json: bool) -> Result<()> {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         headless_paths: Vec<HeadlessPath>,
         headless_message_count: i32,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        extra_paths: Vec<ExtraPath>,
     }
 
     #[derive(serde::Serialize)]
@@ -2255,6 +2257,19 @@ fn run_clients_command(json: bool) -> Result<()> {
         path: String,
         exists: bool,
     }
+
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ExtraPath {
+        path: String,
+        exists: bool,
+    }
+
+    // Collect extra dirs from TOKSCALE_EXTRA_DIRS for display (reuse core parser)
+    let extra_dirs_val = std::env::var("TOKSCALE_EXTRA_DIRS").unwrap_or_default();
+    let all_clients: std::collections::HashSet<ClientId> = ClientId::iter().collect();
+    let extra_dirs: Vec<(ClientId, String)> =
+        tokscale_core::parse_extra_dirs(&extra_dirs_val, &all_clients);
 
     let clients: Vec<ClientRow> = ClientId::iter()
         .map(|client| {
@@ -2317,6 +2332,15 @@ fn run_clients_command(json: bool) -> Result<()> {
             }
             .to_string();
 
+            let extra_paths: Vec<ExtraPath> = extra_dirs
+                .iter()
+                .filter(|(c, _)| *c == client)
+                .map(|(_, path)| ExtraPath {
+                    path: path.clone(),
+                    exists: Path::new(path).exists(),
+                })
+                .collect();
+
             ClientRow {
                 client: client.as_str().to_string(),
                 label,
@@ -2327,6 +2351,7 @@ fn run_clients_command(json: bool) -> Result<()> {
                 headless_supported,
                 headless_paths,
                 headless_message_count,
+                extra_paths,
             }
         })
         .collect();
@@ -2388,6 +2413,18 @@ fn run_clients_command(json: bool) -> Result<()> {
                 println!(
                     "  {}",
                     format!("legacy: {}", legacy_desc.join(", ")).bright_black()
+                );
+            }
+
+            if !row.extra_paths.is_empty() {
+                let extra_desc: Vec<String> = row
+                    .extra_paths
+                    .iter()
+                    .map(|ep| describe_path(&ep.path, ep.exists))
+                    .collect();
+                println!(
+                    "  {}",
+                    format!("extra: {}", extra_desc.join(", ")).bright_black()
                 );
             }
 

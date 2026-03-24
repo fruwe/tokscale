@@ -149,6 +149,37 @@ pub fn scan_directory(root: &str, pattern: &str) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Parse a `TOKSCALE_EXTRA_DIRS`-formatted string into (ClientId, path) pairs.
+///
+/// Format: comma-separated `client:path` pairs.
+/// Example: `"claude:/path/to/mac/sessions,openclaw:/other/path"`
+///
+/// Only returns entries whose client is present in `enabled`.
+/// This is a pure function — the caller is responsible for reading the
+/// environment variable and passing its value here.
+pub fn parse_extra_dirs(value: &str, enabled: &HashSet<ClientId>) -> Vec<(ClientId, String)> {
+    if value.is_empty() {
+        return Vec::new();
+    }
+
+    value
+        .split(',')
+        .filter_map(|entry| {
+            let entry = entry.trim();
+            let (client_str, path) = entry.split_once(':')?;
+            let client_id = ClientId::from_str(client_str.trim())?;
+            if !enabled.contains(&client_id) {
+                return None;
+            }
+            let path = path.trim().to_string();
+            if path.is_empty() {
+                return None;
+            }
+            Some((client_id, path))
+        })
+        .collect()
+}
+
 /// Scan all session client directories in parallel
 pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
     let mut result = ScanResult::default();
@@ -186,6 +217,13 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
         let def = client_id.data();
         let path = def.resolve_path(home_dir);
         tasks.push((*client_id, path, def.pattern));
+    }
+
+    // Extra scan directories from TOKSCALE_EXTRA_DIRS env var
+    let extra_dirs_val = std::env::var("TOKSCALE_EXTRA_DIRS").unwrap_or_default();
+    for (client_id, path) in parse_extra_dirs(&extra_dirs_val, &enabled) {
+        let pattern = client_id.data().pattern;
+        tasks.push((client_id, path, pattern));
     }
 
     if enabled.contains(&ClientId::OpenCode) {
@@ -327,9 +365,14 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
         })
         .collect();
 
-    // Aggregate results
+    // Aggregate results, deduplicating file paths across overlapping directories
+    let mut seen: HashSet<PathBuf> = HashSet::new();
     for (client_id, files) in scan_results {
-        result.get_mut(client_id).extend(files);
+        for file in files {
+            if seen.insert(file.clone()) {
+                result.get_mut(client_id).push(file);
+            }
+        }
     }
 
     result
@@ -863,5 +906,76 @@ mod tests {
             .get(ClientId::KiloCode)
             .iter()
             .all(|p| p.ends_with("ui_messages.json")));
+    }
+
+    #[test]
+    fn test_parse_extra_dirs_basic() {
+        let enabled: HashSet<ClientId> = [ClientId::Claude, ClientId::OpenClaw]
+            .iter()
+            .copied()
+            .collect();
+        let dirs =
+            parse_extra_dirs("claude:/tmp/mac-sessions,openclaw:/tmp/oc-extra", &enabled);
+        assert_eq!(dirs.len(), 2);
+        assert_eq!(dirs[0].0, ClientId::Claude);
+        assert_eq!(dirs[0].1, "/tmp/mac-sessions");
+        assert_eq!(dirs[1].0, ClientId::OpenClaw);
+        assert_eq!(dirs[1].1, "/tmp/oc-extra");
+    }
+
+    #[test]
+    fn test_parse_extra_dirs_filters_disabled_clients() {
+        let enabled: HashSet<ClientId> = [ClientId::Claude].iter().copied().collect();
+        let dirs = parse_extra_dirs(
+            "claude:/tmp/mac-sessions,gemini:/tmp/gemini-extra",
+            &enabled,
+        );
+        assert_eq!(dirs.len(), 1);
+        assert_eq!(dirs[0].0, ClientId::Claude);
+    }
+
+    #[test]
+    fn test_parse_extra_dirs_empty_string() {
+        let enabled: HashSet<ClientId> = ClientId::iter().collect();
+        let dirs = parse_extra_dirs("", &enabled);
+        assert!(dirs.is_empty());
+    }
+
+    #[test]
+    fn test_parse_extra_dirs_invalid_client() {
+        let enabled: HashSet<ClientId> = ClientId::iter().collect();
+        let dirs = parse_extra_dirs("nonexistent:/tmp/foo", &enabled);
+        assert!(dirs.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn test_scan_all_clients_with_extra_dirs() {
+        let previous = std::env::var("TOKSCALE_EXTRA_DIRS").ok();
+
+        let dir = TempDir::new().unwrap();
+        let home = dir.path();
+
+        // Setup default Claude dir
+        setup_mock_claude_dir(home);
+
+        // Setup extra dir with additional session files
+        let extra_dir = TempDir::new().unwrap();
+        let extra_project = extra_dir.path().join("mac-project");
+        fs::create_dir_all(&extra_project).unwrap();
+        File::create(extra_project.join("extra-session.jsonl")).unwrap();
+
+        unsafe {
+            std::env::set_var(
+                "TOKSCALE_EXTRA_DIRS",
+                format!("claude:{}", extra_dir.path().to_string_lossy()),
+            )
+        };
+
+        let result = scan_all_clients(home.to_str().unwrap(), &["claude".to_string()]);
+        // 1 from default path + 1 from extra dir
+        assert_eq!(result.get(ClientId::Claude).len(), 2);
+
+        restore_env("TOKSCALE_EXTRA_DIRS", previous);
     }
 }
