@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use tokscale_core::{ClientId, GroupBy};
 
 use super::data::{
-    AgentUsage, ContributionDay, DailyModelInfo, DailyUsage, GraphData, ModelUsage, TokenBreakdown,
-    UsageData,
+    AgentUsage, ContributionDay, DailyModelInfo, DailyUsage, GraphData, HourlyModelInfo,
+    HourlyUsage, ModelUsage, TokenBreakdown, UsageData,
 };
 
 /// Cache staleness threshold: 5 minutes (matches TS implementation)
@@ -55,6 +55,8 @@ struct CachedUsageData {
     #[serde(default)]
     agents: Vec<CachedAgentUsage>,
     daily: Vec<CachedDailyUsage>,
+    #[serde(default)]
+    hourly: Vec<CachedHourlyUsage>,
     graph: Option<CachedGraphData>,
     total_tokens: u64,
     total_cost: f64,
@@ -116,6 +118,24 @@ struct CachedDailyUsage {
     tokens: CachedTokenBreakdown,
     cost: f64,
     models: Vec<(String, CachedDailyModelInfo)>, // HashMap as vec of tuples
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CachedHourlyModelInfo {
+    client: String,
+    tokens: CachedTokenBreakdown,
+    cost: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CachedHourlyUsage {
+    datetime: String, // NaiveDateTime as "YYYY-MM-DD HH:MM:SS"
+    tokens: CachedTokenBreakdown,
+    cost: f64,
+    clients: Vec<String>,
+    models: Vec<(String, CachedHourlyModelInfo)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -234,6 +254,57 @@ impl From<CachedDailyModelInfo> for DailyModelInfo {
             tokens: d.tokens.into(),
             cost: d.cost,
         }
+    }
+}
+
+impl From<&HourlyModelInfo> for CachedHourlyModelInfo {
+    fn from(h: &HourlyModelInfo) -> Self {
+        Self {
+            client: h.client.clone(),
+            tokens: (&h.tokens).into(),
+            cost: h.cost,
+        }
+    }
+}
+
+impl From<CachedHourlyModelInfo> for HourlyModelInfo {
+    fn from(h: CachedHourlyModelInfo) -> Self {
+        Self {
+            client: h.client,
+            tokens: h.tokens.into(),
+            cost: h.cost,
+        }
+    }
+}
+
+impl From<&HourlyUsage> for CachedHourlyUsage {
+    fn from(h: &HourlyUsage) -> Self {
+        Self {
+            datetime: h.datetime.format("%Y-%m-%d %H:%M:%S").to_string(),
+            tokens: (&h.tokens).into(),
+            cost: h.cost,
+            clients: h.clients.iter().cloned().collect(),
+            models: h
+                .models
+                .iter()
+                .map(|(k, v)| (k.clone(), v.into()))
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<CachedHourlyUsage> for HourlyUsage {
+    type Error = chrono::ParseError;
+
+    fn try_from(h: CachedHourlyUsage) -> Result<Self, Self::Error> {
+        use chrono::NaiveDateTime;
+        Ok(Self {
+            datetime: NaiveDateTime::parse_from_str(&h.datetime, "%Y-%m-%d %H:%M:%S")?,
+            tokens: h.tokens.into(),
+            cost: h.cost,
+            clients: h.clients.into_iter().collect(),
+            models: h.models.into_iter().map(|(k, v)| (k, v.into())).collect(),
+        })
     }
 }
 
@@ -358,6 +429,7 @@ impl From<&UsageData> for CachedUsageData {
             models: u.models.iter().map(|m| m.into()).collect(),
             agents: u.agents.iter().map(|a| a.into()).collect(),
             daily: u.daily.iter().map(|d| d.into()).collect(),
+            hourly: u.hourly.iter().map(|h| h.into()).collect(),
             graph: u.graph.as_ref().map(|g| g.into()),
             total_tokens: u.total_tokens,
             total_cost: u.total_cost,
@@ -372,13 +444,15 @@ impl TryFrom<CachedUsageData> for UsageData {
 
     fn try_from(u: CachedUsageData) -> Result<Self, Self::Error> {
         let daily: Result<Vec<DailyUsage>, _> = u.daily.into_iter().map(|d| d.try_into()).collect();
+        let hourly: Result<Vec<HourlyUsage>, _> =
+            u.hourly.into_iter().map(|h| h.try_into()).collect();
         let graph: Option<Result<GraphData, _>> = u.graph.map(|g| g.try_into());
 
         Ok(Self {
             models: u.models.into_iter().map(|m| m.into()).collect(),
             agents: u.agents.into_iter().map(|a| a.into()).collect(),
             daily: daily?,
-            hourly: Vec::new(),
+            hourly: hourly?,
             graph: graph.transpose()?,
             total_tokens: u.total_tokens,
             total_cost: u.total_cost,
