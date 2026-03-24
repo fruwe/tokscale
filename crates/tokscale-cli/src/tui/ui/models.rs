@@ -85,7 +85,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         ]
     } else {
         vec![
-            "#", "Model", "Provider", "Source", "Input", "Output", "Cache R", "Cache W", "Cache%",
+            "#", "Model", "Provider", "Source", "Input", "Output", "Cache R", "Cache W", "Cache×",
             "Total", "Cost",
         ]
     };
