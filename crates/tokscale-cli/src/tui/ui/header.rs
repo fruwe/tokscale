@@ -47,8 +47,8 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     if !is_narrow {
         block = block.title_top(
             Line::from(vec![
-                Span::styled(" | ", Style::default().fg(Color::Rgb(102, 102, 102))),
-                Span::styled("GitHub ", Style::default().fg(Color::Rgb(102, 102, 102))),
+                Span::styled(" | ", Style::default().fg(app.theme.border)),
+                Span::styled("GitHub ", Style::default().fg(app.theme.border)),
             ])
             .right_aligned(),
         );

@@ -143,16 +143,21 @@ fn render_graph(frame: &mut Frame, app: &mut App, area: Rect) {
                 Some(day) => {
                     let color = intensity_color(day.intensity);
                     if is_selected {
-                        ("▓▓", Style::default().fg(Color::White).bg(color))
+                        ("▓▓", Style::default().fg(app.theme.foreground).bg(color))
                     } else {
                         ("██", Style::default().fg(color))
                     }
                 }
                 None => {
                     if is_selected {
-                        ("▓▓", Style::default().fg(Color::White).bg(theme_colors[0]))
+                        (
+                            "▓▓",
+                            Style::default()
+                                .fg(app.theme.foreground)
+                                .bg(theme_colors[0]),
+                        )
                     } else {
-                        ("· ", Style::default().fg(Color::Rgb(102, 102, 102)))
+                        ("· ", Style::default().fg(app.theme.border))
                     }
                 }
             };
@@ -308,7 +313,7 @@ fn render_stats_panel(frame: &mut Frame, app: &App, area: Rect) {
         Span::raw(" "),
         Span::styled(
             format_tokens(total_tokens),
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(app.theme.info),
         ),
     ]);
     frame.render_widget(
@@ -324,7 +329,7 @@ fn render_stats_panel(frame: &mut Frame, app: &App, area: Rect) {
     let row2 = Line::from(vec![
         Span::styled("Sessions:", Style::default().fg(app.theme.muted)),
         Span::raw(" "),
-        Span::styled(sessions.to_string(), Style::default().fg(Color::Cyan)),
+        Span::styled(sessions.to_string(), Style::default().fg(app.theme.info)),
     ]);
     frame.render_widget(Paragraph::new(row2), Rect::new(inner.x, y, col1_width, 1));
 
@@ -332,7 +337,10 @@ fn render_stats_panel(frame: &mut Frame, app: &App, area: Rect) {
     let row2_col2 = Line::from(vec![
         Span::styled(cost_label, Style::default().fg(app.theme.muted)),
         Span::raw(" "),
-        Span::styled(format_cost(total_cost), Style::default().fg(Color::Green)),
+        Span::styled(
+            format_cost(total_cost),
+            Style::default().fg(app.theme.success),
+        ),
     ]);
     frame.render_widget(
         Paragraph::new(row2_col2),
@@ -355,7 +363,7 @@ fn render_stats_panel(frame: &mut Frame, app: &App, area: Rect) {
         Span::raw(" "),
         Span::styled(
             format!("{} days", app.data.current_streak),
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(app.theme.info),
         ),
     ]);
     frame.render_widget(Paragraph::new(row3), Rect::new(inner.x, y, col1_width, 1));
@@ -370,7 +378,7 @@ fn render_stats_panel(frame: &mut Frame, app: &App, area: Rect) {
         Span::raw(" "),
         Span::styled(
             format!("{} days", app.data.longest_streak),
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(app.theme.info),
         ),
     ]);
     frame.render_widget(
@@ -389,7 +397,7 @@ fn render_stats_panel(frame: &mut Frame, app: &App, area: Rect) {
         Span::raw(" "),
         Span::styled(
             format!("{}/{}", active_days, total_days),
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(app.theme.info),
         ),
     ]);
     frame.render_widget(
@@ -404,7 +412,7 @@ fn render_stats_panel(frame: &mut Frame, app: &App, area: Rect) {
 
     let legend_spans = vec![
         Span::styled("Less ", Style::default().fg(app.theme.muted)),
-        Span::styled("· ", Style::default().fg(Color::Rgb(102, 102, 102))),
+        Span::styled("· ", Style::default().fg(app.theme.border)),
         Span::styled("██", Style::default().fg(app.theme.colors[1])),
         Span::raw(" "),
         Span::styled("██", Style::default().fg(app.theme.colors[2])),
@@ -432,7 +440,7 @@ fn render_stats_panel(frame: &mut Frame, app: &App, area: Rect) {
                 total_cost
             ),
             Style::default()
-                .fg(Color::Yellow)
+                .fg(app.theme.warning)
                 .add_modifier(Modifier::ITALIC),
         ));
         frame.render_widget(
@@ -494,16 +502,19 @@ fn render_breakdown_panel(frame: &mut Frame, app: &mut App, area: Rect) {
             Span::styled(
                 day.date.format("%a, %b %d, %Y").to_string(),
                 Style::default()
-                    .fg(Color::White)
+                    .fg(app.theme.foreground)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw("  "),
-            Span::styled(format_tokens(day.tokens), Style::default().fg(Color::Cyan)),
+            Span::styled(
+                format_tokens(day.tokens),
+                Style::default().fg(app.theme.info),
+            ),
             Span::raw("  "),
             Span::styled(
                 format_cost(day.cost),
                 Style::default()
-                    .fg(Color::Green)
+                    .fg(app.theme.success)
                     .add_modifier(Modifier::BOLD),
             ),
         ]),
@@ -549,7 +560,7 @@ fn render_breakdown_panel(frame: &mut Frame, app: &mut App, area: Rect) {
                     Span::styled("●", Style::default().fg(model_color)),
                     Span::styled(
                         format!(" {}", truncate_model_name(&model_name, 25)),
-                        Style::default().fg(Color::White),
+                        Style::default().fg(app.theme.foreground),
                     ),
                 ]));
 
@@ -559,45 +570,45 @@ fn render_breakdown_panel(frame: &mut Frame, app: &mut App, area: Rect) {
                         Span::styled("    ", Style::default()),
                         Span::styled(
                             format_tokens(model_info.tokens.input),
-                            Style::default().fg(Color::Rgb(170, 170, 170)),
+                            Style::default().fg(app.theme.token_input),
                         ),
-                        Span::styled("/", Style::default().fg(Color::Rgb(102, 102, 102))),
+                        Span::styled("/", Style::default().fg(app.theme.border)),
                         Span::styled(
                             format_tokens(model_info.tokens.output),
-                            Style::default().fg(Color::Rgb(170, 170, 170)),
+                            Style::default().fg(app.theme.token_output),
                         ),
-                        Span::styled("/", Style::default().fg(Color::Rgb(102, 102, 102))),
+                        Span::styled("/", Style::default().fg(app.theme.border)),
                         Span::styled(
                             format_tokens(model_info.tokens.cache_read),
-                            Style::default().fg(Color::Rgb(170, 170, 170)),
+                            Style::default().fg(app.theme.token_cache_read),
                         ),
-                        Span::styled("/", Style::default().fg(Color::Rgb(102, 102, 102))),
+                        Span::styled("/", Style::default().fg(app.theme.border)),
                         Span::styled(
                             format_tokens(model_info.tokens.cache_write),
-                            Style::default().fg(Color::Rgb(170, 170, 170)),
+                            Style::default().fg(app.theme.token_cache_write),
                         ),
                     ]));
                 } else {
                     lines.push(Line::from(vec![
-                        Span::styled("    In: ", Style::default().fg(Color::Rgb(102, 102, 102))),
+                        Span::styled("    In: ", Style::default().fg(app.theme.border)),
                         Span::styled(
                             format_tokens(model_info.tokens.input),
-                            Style::default().fg(Color::Rgb(170, 170, 170)),
+                            Style::default().fg(app.theme.token_input),
                         ),
-                        Span::styled(" · Out: ", Style::default().fg(Color::Rgb(102, 102, 102))),
+                        Span::styled(" · Out: ", Style::default().fg(app.theme.border)),
                         Span::styled(
                             format_tokens(model_info.tokens.output),
-                            Style::default().fg(Color::Rgb(170, 170, 170)),
+                            Style::default().fg(app.theme.token_output),
                         ),
-                        Span::styled(" · CR: ", Style::default().fg(Color::Rgb(102, 102, 102))),
+                        Span::styled(" · CR: ", Style::default().fg(app.theme.border)),
                         Span::styled(
                             format_tokens(model_info.tokens.cache_read),
-                            Style::default().fg(Color::Rgb(170, 170, 170)),
+                            Style::default().fg(app.theme.token_cache_read),
                         ),
-                        Span::styled(" · CW: ", Style::default().fg(Color::Rgb(102, 102, 102))),
+                        Span::styled(" · CW: ", Style::default().fg(app.theme.border)),
                         Span::styled(
                             format_tokens(model_info.tokens.cache_write),
-                            Style::default().fg(Color::Rgb(170, 170, 170)),
+                            Style::default().fg(app.theme.token_cache_write),
                         ),
                     ]));
                 }

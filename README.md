@@ -130,7 +130,7 @@ In the age of AI-assisted development, **tokens are the new energy**. They power
 - **Interactive TUI Mode** - Beautiful terminal UI powered by Ratatui (default mode)
   - 4 interactive views: Overview, Models, Daily, Stats
   - Keyboard & mouse navigation
-  - GitHub-style contribution graph with 9 color themes
+  - GitHub-style contribution graph with 15 color themes
   - Real-time filtering and sorting
   - Zero flicker rendering
 - **Multi-platform support** - Track usage across OpenCode, Claude Code, Codex CLI, Cursor IDE, Gemini CLI, Amp, Droid, OpenClaw, Pi, Kimi CLI, Qwen CLI, Roo Code, Kilo, Kilo CLI, Mux, and Synthetic
@@ -239,12 +239,12 @@ The interactive TUI mode provides:
   - `c/d/t`: Sort by cost/date/tokens
   - `s`: Open source picker dialog
   - `g`: Open group-by picker dialog (model, client+model, client+provider+model)
-  - `p`: Cycle through 9 color themes
+  - `p`: Cycle through 15 color themes
   - `r`: Refresh data
   - `e`: Export to JSON
   - `q`: Quit
 - **Mouse Support**: Click tabs, buttons, and filters
-- **Themes**: Green, Halloween, Teal, Blue, Pink, Purple, Orange, Monochrome, YlGnBu
+- **Themes**: Green, Halloween, Teal, Blue, Pink, Purple, Orange, Monochrome, YlGnBu, Gtuvbox, Tokyo Night, Catppuccin, Solarized, Gruvbox, One Dark
 - **Settings Persistence**: Preferences saved to `~/.config/tokscale/settings.json` (see [Configuration](#configuration))
 
 ### Group-By Strategies
@@ -484,7 +484,7 @@ Tokscale stores settings in `~/.config/tokscale/settings.json`:
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `colorPalette` | string | `"blue"` | TUI color theme (green, halloween, teal, blue, pink, purple, orange, monochrome, ylgnbu) |
+| `colorPalette` | string | `"blue"` | TUI color theme (`green`, `halloween`, `teal`, `blue`, `pink`, `purple`, `orange`, `monochrome`, `ylgnbu`, `gtuvbox`, `tokyo-night`, `catppuccin`, `solarized`, `gruvbox`, `one-dark`) |
 | `includeUnusedModels` | boolean | `false` | Show models with zero tokens in reports |
 | `autoRefreshEnabled` | boolean | `false` | Enable auto-refresh in TUI |
 | `autoRefreshMs` | number | `60000` | Auto-refresh interval (30000-3600000ms) |

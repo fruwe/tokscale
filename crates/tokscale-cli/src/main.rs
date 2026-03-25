@@ -21,8 +21,8 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    #[arg(short, long, default_value = "blue")]
-    theme: String,
+    #[arg(short, long)]
+    theme: Option<String>,
 
     #[arg(short, long, default_value = "0")]
     refresh: u64,
@@ -599,7 +599,7 @@ fn main() -> Result<()> {
                 )
             } else {
                 tui::run(
-                    &cli.theme,
+                    cli.theme.as_deref(),
                     cli.refresh,
                     cli.debug,
                     clients,
@@ -673,7 +673,7 @@ fn main() -> Result<()> {
                 )
             } else {
                 tui::run(
-                    &cli.theme,
+                    cli.theme.as_deref(),
                     cli.refresh,
                     cli.debug,
                     clients,
@@ -788,7 +788,7 @@ fn main() -> Result<()> {
             let (since, until) = build_date_filter(today, week, month, since, until);
             let year = normalize_year_filter(today, week, month, year);
             tui::run(
-                &cli.theme,
+                cli.theme.as_deref(),
                 cli.refresh,
                 cli.debug,
                 clients,
@@ -963,7 +963,7 @@ fn main() -> Result<()> {
                 )
             } else {
                 tui::run(
-                    &cli.theme,
+                    cli.theme.as_deref(),
                     cli.refresh,
                     cli.debug,
                     clients,
@@ -3516,6 +3516,18 @@ mod tests {
             .find(|entry| entry.year == year)
             .cloned()
             .unwrap()
+    }
+
+    #[test]
+    fn test_cli_theme_is_none_when_not_provided() {
+        let cli = Cli::parse_from(["tokscale"]);
+        assert_eq!(cli.theme, None);
+    }
+
+    #[test]
+    fn test_cli_theme_parses_explicit_value() {
+        let cli = Cli::parse_from(["tokscale", "--theme", "gtuvbox"]);
+        assert_eq!(cli.theme, Some("gtuvbox".to_string()));
     }
 
     #[test]

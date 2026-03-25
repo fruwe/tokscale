@@ -15,7 +15,7 @@ use super::ui::dialog::{ClientPickerDialog, DialogStack};
 
 /// Configuration for TUI initialization
 pub struct TuiConfig {
-    pub theme: String,
+    pub theme: Option<String>,
     pub refresh: u64,
     pub sessions_path: Option<String>,
     pub clients: Option<Vec<String>>,
@@ -158,10 +158,7 @@ pub struct App {
 impl App {
     pub fn new_with_cached_data(config: TuiConfig, cached_data: Option<UsageData>) -> Result<Self> {
         let settings = Settings::load();
-        let theme_name: ThemeName = config
-            .theme
-            .parse()
-            .unwrap_or_else(|_| settings.theme_name());
+        let theme_name = resolve_theme_name(config.theme.as_deref(), &settings);
         let theme = Theme::from_name(theme_name);
 
         let mut enabled_clients = HashSet::new();
@@ -947,10 +944,18 @@ impl App {
     }
 }
 
+fn resolve_theme_name(theme_arg: Option<&str>, settings: &Settings) -> ThemeName {
+    theme_arg
+        .and_then(|theme| theme.parse().ok())
+        .unwrap_or_else(|| settings.theme_name())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tui::data::{ModelUsage, TokenBreakdown};
+    use crate::tui::settings::Settings;
+    use crate::tui::themes::ThemeName;
 
     #[test]
     fn test_tab_all() {
@@ -1000,9 +1005,32 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_theme_name_uses_settings_when_cli_theme_missing() {
+        let settings = Settings {
+            color_palette: "gtuvbox".to_string(),
+            ..Settings::default()
+        };
+
+        assert_eq!(resolve_theme_name(None, &settings), ThemeName::Gtuvbox);
+    }
+
+    #[test]
+    fn test_resolve_theme_name_prefers_cli_theme_over_settings() {
+        let settings = Settings {
+            color_palette: "gtuvbox".to_string(),
+            ..Settings::default()
+        };
+
+        assert_eq!(
+            resolve_theme_name(Some("orange"), &settings),
+            ThemeName::Orange
+        );
+    }
+
+    #[test]
     fn test_reset_selection() {
         let config = TuiConfig {
-            theme: "blue".to_string(),
+            theme: Some("blue".to_string()),
             refresh: 0,
             sessions_path: None,
             clients: None,
@@ -1027,7 +1055,7 @@ mod tests {
     #[test]
     fn test_move_selection_up() {
         let config = TuiConfig {
-            theme: "blue".to_string(),
+            theme: Some("blue".to_string()),
             refresh: 0,
             sessions_path: None,
             clients: None,
@@ -1070,7 +1098,7 @@ mod tests {
     #[test]
     fn test_move_selection_down() {
         let config = TuiConfig {
-            theme: "blue".to_string(),
+            theme: Some("blue".to_string()),
             refresh: 0,
             sessions_path: None,
             clients: None,
@@ -1113,7 +1141,7 @@ mod tests {
     #[test]
     fn test_clamp_selection() {
         let config = TuiConfig {
-            theme: "blue".to_string(),
+            theme: Some("blue".to_string()),
             refresh: 0,
             sessions_path: None,
             clients: None,
@@ -1150,7 +1178,7 @@ mod tests {
     #[test]
     fn test_set_sort() {
         let config = TuiConfig {
-            theme: "blue".to_string(),
+            theme: Some("blue".to_string()),
             refresh: 0,
             sessions_path: None,
             clients: None,
@@ -1184,7 +1212,7 @@ mod tests {
     #[test]
     fn test_should_quit() {
         let config = TuiConfig {
-            theme: "blue".to_string(),
+            theme: Some("blue".to_string()),
             refresh: 0,
             sessions_path: None,
             clients: None,
@@ -1202,7 +1230,7 @@ mod tests {
 
     fn make_app() -> App {
         let config = TuiConfig {
-            theme: "blue".to_string(),
+            theme: Some("blue".to_string()),
             refresh: 0,
             sessions_path: None,
             clients: None,
@@ -1541,7 +1569,7 @@ mod tests {
         app.handle_key_event(key(KeyCode::Char('p')));
         assert_ne!(app.theme.name, initial_theme);
 
-        for _ in 0..8 {
+        for _ in 0..(ThemeName::all().len() - 1) {
             app.handle_key_event(key(KeyCode::Char('p')));
         }
         assert_eq!(app.theme.name, initial_theme);

@@ -115,7 +115,7 @@ fn render_main_row(frame: &mut Frame, app: &mut App, area: Rect) {
     let total_tokens = app.data.total_tokens;
     right_spans.push(Span::styled(
         format_tokens(total_tokens),
-        Style::default().fg(Color::Cyan),
+        Style::default().fg(app.theme.info),
     ));
     if !is_very_narrow {
         right_spans.push(Span::styled(
@@ -130,7 +130,7 @@ fn render_main_row(frame: &mut Frame, app: &mut App, area: Rect) {
     right_spans.push(Span::styled(
         format_cost(app.data.total_cost),
         Style::default()
-            .fg(Color::Green)
+            .fg(app.theme.success)
             .add_modifier(Modifier::BOLD),
     ));
 
@@ -160,21 +160,21 @@ fn render_help_row(frame: &mut Frame, app: &App, area: Rect) {
             Span::styled("·", Style::default().fg(app.theme.muted)),
             Span::styled("←→", Style::default().fg(app.theme.muted)),
             Span::styled("·", Style::default().fg(app.theme.muted)),
-            Span::styled("d/t/c", Style::default().fg(Color::Blue)),
+            Span::styled("d/t/c", Style::default().fg(app.theme.shortcut_sort)),
             Span::styled("·", Style::default().fg(app.theme.muted)),
-            Span::styled("[s]", Style::default().fg(Color::Cyan)),
+            Span::styled("[s]", Style::default().fg(app.theme.accent)),
             Span::styled("·", Style::default().fg(app.theme.muted)),
-            Span::styled("[g]", Style::default().fg(Color::Cyan)),
+            Span::styled("[g]", Style::default().fg(app.theme.accent)),
             Span::styled("·", Style::default().fg(app.theme.muted)),
-            Span::styled("[p]", Style::default().fg(Color::Magenta)),
+            Span::styled("[p]", Style::default().fg(app.theme.shortcut_theme)),
             Span::styled("·", Style::default().fg(app.theme.muted)),
-            Span::styled("[r]", Style::default().fg(Color::Yellow)),
+            Span::styled("[r]", Style::default().fg(app.theme.warning)),
             Span::styled("·", Style::default().fg(app.theme.muted)),
             Span::styled("q", Style::default().fg(app.theme.muted)),
         ];
         if app.current_tab == Tab::Daily {
             spans.push(Span::styled("·", Style::default().fg(app.theme.muted)));
-            spans.push(Span::styled("j", Style::default().fg(Color::Yellow)));
+            spans.push(Span::styled("j", Style::default().fg(app.theme.warning)));
         }
         spans
     } else {
@@ -183,29 +183,29 @@ fn render_help_row(frame: &mut Frame, app: &App, area: Rect) {
                 "↑↓ scroll • ←→/tab view • ",
                 Style::default().fg(app.theme.muted),
             ),
-            Span::styled("[d/t/c:sort]", Style::default().fg(Color::Blue)),
+            Span::styled("[d/t/c:sort]", Style::default().fg(app.theme.shortcut_sort)),
             Span::styled(" • ", Style::default().fg(app.theme.muted)),
         ];
         if app.current_tab == Tab::Daily {
             spans.push(Span::styled(
                 "[j:today]",
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(app.theme.warning),
             ));
             spans.push(Span::styled(" • ", Style::default().fg(app.theme.muted)));
         }
         spans.push(Span::styled(
             "[s:sources]",
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(app.theme.accent),
         ));
         spans.push(Span::styled(" ", Style::default()));
         spans.push(Span::styled(
             format!("[g:{}]", app.group_by.borrow()),
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(app.theme.accent),
         ));
         spans.push(Span::styled(" • ", Style::default().fg(app.theme.muted)));
         spans.push(Span::styled(
             format!("[p:{}]", app.theme.name.as_str()),
-            Style::default().fg(Color::Magenta),
+            Style::default().fg(app.theme.shortcut_theme),
         ));
         spans.push(Span::styled(" ", Style::default()));
         spans.push(Span::styled(
@@ -215,7 +215,7 @@ fn render_help_row(frame: &mut Frame, app: &App, area: Rect) {
                 "[R:auto off]".to_string()
             },
             Style::default().fg(if app.auto_refresh {
-                Color::Green
+                app.theme.success
             } else {
                 app.theme.muted
             }),
@@ -223,7 +223,7 @@ fn render_help_row(frame: &mut Frame, app: &App, area: Rect) {
         spans.push(Span::styled(" • ", Style::default().fg(app.theme.muted)));
         spans.push(Span::styled(
             "[r:refresh]",
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(app.theme.warning),
         ));
         spans.push(Span::styled(
             " • e • q",
@@ -267,7 +267,7 @@ fn render_status_row(frame: &mut Frame, app: &App, area: Rect) {
         spans.push(Span::styled(
             msg.clone(),
             Style::default()
-                .fg(Color::Green)
+                .fg(app.theme.success)
                 .add_modifier(Modifier::BOLD),
         ));
     } else {

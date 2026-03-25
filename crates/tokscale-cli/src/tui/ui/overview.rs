@@ -164,7 +164,7 @@ fn render_top_models(frame: &mut Frame, app: &mut App, area: Rect, items_per_pag
         .title_top(
             Line::from(Span::styled(
                 format!(" {} ", title_right),
-                Style::default().fg(Color::Green),
+                Style::default().fg(app.theme.success),
             ))
             .right_aligned(),
         )
@@ -254,45 +254,45 @@ fn render_top_models(frame: &mut Frame, app: &mut App, area: Rect, items_per_pag
                 Span::raw("  "),
                 Span::styled(
                     format_tokens(model.tokens_input),
-                    Style::default().fg(Color::Rgb(170, 170, 170)),
+                    Style::default().fg(theme_foreground),
                 ),
-                Span::styled("/", Style::default().fg(Color::Rgb(102, 102, 102))),
+                Span::styled("/", Style::default().fg(theme_border)),
                 Span::styled(
                     format_tokens(model.tokens_output),
-                    Style::default().fg(Color::Rgb(170, 170, 170)),
+                    Style::default().fg(theme_foreground),
                 ),
-                Span::styled("/", Style::default().fg(Color::Rgb(102, 102, 102))),
+                Span::styled("/", Style::default().fg(theme_border)),
                 Span::styled(
                     format_tokens(model.tokens_cache_read),
-                    Style::default().fg(Color::Rgb(170, 170, 170)),
+                    Style::default().fg(theme_foreground),
                 ),
-                Span::styled("/", Style::default().fg(Color::Rgb(102, 102, 102))),
+                Span::styled("/", Style::default().fg(theme_border)),
                 Span::styled(
                     format_tokens(model.tokens_cache_write),
-                    Style::default().fg(Color::Rgb(170, 170, 170)),
+                    Style::default().fg(theme_foreground),
                 ),
             ]
         } else {
             vec![
-                Span::styled("  In: ", Style::default().fg(Color::Rgb(102, 102, 102))),
+                Span::styled("  In: ", Style::default().fg(theme_border)),
                 Span::styled(
                     format_tokens(model.tokens_input),
-                    Style::default().fg(Color::Rgb(170, 170, 170)),
+                    Style::default().fg(theme_foreground),
                 ),
-                Span::styled(" · Out: ", Style::default().fg(Color::Rgb(102, 102, 102))),
+                Span::styled(" · Out: ", Style::default().fg(theme_border)),
                 Span::styled(
                     format_tokens(model.tokens_output),
-                    Style::default().fg(Color::Rgb(170, 170, 170)),
+                    Style::default().fg(theme_foreground),
                 ),
-                Span::styled(" · CR: ", Style::default().fg(Color::Rgb(102, 102, 102))),
+                Span::styled(" · CR: ", Style::default().fg(theme_border)),
                 Span::styled(
                     format_tokens(model.tokens_cache_read),
-                    Style::default().fg(Color::Rgb(170, 170, 170)),
+                    Style::default().fg(theme_foreground),
                 ),
-                Span::styled(" · CW: ", Style::default().fg(Color::Rgb(102, 102, 102))),
+                Span::styled(" · CW: ", Style::default().fg(theme_border)),
                 Span::styled(
                     format_tokens(model.tokens_cache_write),
-                    Style::default().fg(Color::Rgb(170, 170, 170)),
+                    Style::default().fg(theme_foreground),
                 ),
             ]
         };

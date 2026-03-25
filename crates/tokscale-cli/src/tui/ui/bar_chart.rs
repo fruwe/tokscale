@@ -51,6 +51,12 @@ pub fn render_stacked_bar_chart(frame: &mut Frame, app: &App, area: Rect, data: 
     let buf = frame.buffer_mut();
     let bar_count = data.len();
 
+    for y in area.y..(area.y + area.height) {
+        for x in area.x..(area.x + area.width) {
+            buf[(x, y)].set_style(Style::default().bg(app.theme.background));
+        }
+    }
+
     let get_bar_width = |index: usize| -> usize {
         if bar_count == 0 {
             return 1;
@@ -247,4 +253,74 @@ fn get_stacked_bar_content(
     };
     let block_index = (ratio * 8.0).floor().clamp(1.0, 8.0) as usize;
     (BLOCKS[block_index], best_color)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{render_stacked_bar_chart, ModelSegment, StackedBarData};
+    use crate::tui::app::{App, TuiConfig};
+    use ratatui::{backend::TestBackend, layout::Rect, style::Color, Terminal};
+
+    fn test_app(theme: &str) -> App {
+        App::new_with_cached_data(
+            TuiConfig {
+                theme: Some(theme.to_string()),
+                refresh: 0,
+                sessions_path: None,
+                clients: None,
+                since: None,
+                until: None,
+                year: None,
+                initial_tab: None,
+            },
+            None,
+        )
+        .expect("app should build for tests")
+    }
+
+    #[test]
+    fn stacked_bar_chart_repaints_background_when_theme_changes() {
+        let mut terminal = Terminal::new(TestBackend::new(40, 10)).expect("terminal should build");
+        let gruvbox = test_app("gtuvbox");
+        let purple = test_app("purple");
+        let area = Rect::new(0, 0, 40, 8);
+        let data = vec![
+            StackedBarData {
+                date: "03/01".to_string(),
+                models: vec![],
+                total: 0,
+            },
+            StackedBarData {
+                date: "03/02".to_string(),
+                models: vec![ModelSegment {
+                    model_id: "gpt-5.4".to_string(),
+                    tokens: 10,
+                    color: Color::Green,
+                }],
+                total: 10,
+            },
+            StackedBarData {
+                date: "03/03".to_string(),
+                models: vec![],
+                total: 0,
+            },
+            StackedBarData {
+                date: "03/04".to_string(),
+                models: vec![],
+                total: 0,
+            },
+        ];
+
+        terminal
+            .draw(|frame| render_stacked_bar_chart(frame, &gruvbox, area, &data))
+            .expect("first draw should succeed");
+        terminal
+            .draw(|frame| render_stacked_bar_chart(frame, &purple, area, &data))
+            .expect("second draw should succeed");
+
+        let buffer = terminal.backend().buffer();
+        let stale_cell = &buffer[(8, 2)];
+
+        assert_eq!(stale_cell.bg, purple.theme.background);
+    }
 }

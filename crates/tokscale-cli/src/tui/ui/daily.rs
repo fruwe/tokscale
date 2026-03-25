@@ -117,53 +117,53 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
                 vec![
                     Cell::from(day.date.format("%m/%d").to_string()).style(if is_today {
                         Style::default()
-                            .fg(Color::Yellow)
+                            .fg(app.theme.warning)
                             .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
                     }),
-                    Cell::from(format_cost(day.cost)).style(Style::default().fg(Color::Green)),
+                    Cell::from(format_cost(day.cost)).style(Style::default().fg(app.theme.success)),
                 ]
             } else if is_narrow {
                 vec![
                     Cell::from(day.date.format("%Y-%m-%d").to_string()).style(if is_today {
                         Style::default()
-                            .fg(Color::Yellow)
+                            .fg(app.theme.warning)
                             .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
                     }),
                     Cell::from(format_tokens(day.tokens.total())),
-                    Cell::from(format_cost(day.cost)).style(Style::default().fg(Color::Green)),
+                    Cell::from(format_cost(day.cost)).style(Style::default().fg(app.theme.success)),
                 ]
             } else {
                 vec![
                     Cell::from(day.date.format("%Y-%m-%d").to_string()).style(if is_today {
                         Style::default()
-                            .fg(Color::Yellow)
+                            .fg(app.theme.warning)
                             .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().add_modifier(Modifier::BOLD)
                     }),
                     Cell::from(format_tokens(day.tokens.input))
-                        .style(Style::default().fg(Color::Rgb(100, 200, 100))),
+                        .style(Style::default().fg(app.theme.token_input)),
                     Cell::from(format_tokens(day.tokens.output))
-                        .style(Style::default().fg(Color::Rgb(200, 100, 100))),
+                        .style(Style::default().fg(app.theme.token_output)),
                     Cell::from(format_tokens(day.tokens.cache_read))
-                        .style(Style::default().fg(Color::Rgb(100, 150, 200))),
+                        .style(Style::default().fg(app.theme.token_cache_read)),
                     Cell::from(format_tokens(day.tokens.cache_write))
-                        .style(Style::default().fg(Color::Rgb(200, 150, 100))),
+                        .style(Style::default().fg(app.theme.token_cache_write)),
                     Cell::from(format_tokens(day.tokens.total())),
-                    Cell::from(format_cost(day.cost)).style(Style::default().fg(Color::Green)),
+                    Cell::from(format_cost(day.cost)).style(Style::default().fg(app.theme.success)),
                 ]
             };
 
             let row_style = if is_selected {
                 Style::default().bg(theme_selection)
             } else if is_today {
-                Style::default().bg(Color::Rgb(28, 42, 34))
+                Style::default().bg(app.theme.today)
             } else if is_striped {
-                Style::default().bg(Color::Rgb(20, 24, 30))
+                Style::default().bg(app.theme.stripe)
             } else {
                 Style::default()
             };

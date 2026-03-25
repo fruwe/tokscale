@@ -107,14 +107,16 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
                 vec![
                     Cell::from(truncate(&agent.agent, 18))
                         .style(Style::default().fg(app.theme.foreground)),
-                    Cell::from(format_cost(agent.cost)).style(Style::default().fg(Color::Green)),
+                    Cell::from(format_cost(agent.cost))
+                        .style(Style::default().fg(app.theme.success)),
                 ]
             } else if is_narrow {
                 vec![
                     Cell::from(truncate(&agent.agent, 18))
                         .style(Style::default().fg(app.theme.foreground)),
                     Cell::from(format_tokens(agent.tokens.total())),
-                    Cell::from(format_cost(agent.cost)).style(Style::default().fg(Color::Green)),
+                    Cell::from(format_cost(agent.cost))
+                        .style(Style::default().fg(app.theme.success)),
                 ]
             } else {
                 vec![
@@ -127,7 +129,8 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
                     Cell::from(truncate(&client_labels(&agent.clients), 24))
                         .style(Style::default().fg(theme_muted)),
                     Cell::from(format_tokens(agent.tokens.total())),
-                    Cell::from(format_cost(agent.cost)).style(Style::default().fg(Color::Green)),
+                    Cell::from(format_cost(agent.cost))
+                        .style(Style::default().fg(app.theme.success)),
                     Cell::from(agent.message_count.to_string())
                         .style(Style::default().fg(theme_muted)),
                 ]
@@ -136,7 +139,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
             let row_style = if is_selected {
                 Style::default().bg(theme_selection)
             } else if is_striped {
-                Style::default().bg(Color::Rgb(20, 24, 30))
+                Style::default().bg(app.theme.stripe)
             } else {
                 Style::default()
             };
@@ -237,7 +240,7 @@ mod tests {
     fn make_app(clients: Vec<ClientId>) -> App {
         let app = App::new_with_cached_data(
             TuiConfig {
-                theme: "tokscale".to_string(),
+                theme: Some("tokscale".to_string()),
                 refresh: 0,
                 sessions_path: None,
                 clients: None,
