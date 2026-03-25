@@ -134,6 +134,10 @@ struct CachedDailyUsage {
     models: Vec<(String, CachedDailyModelInfo)>,
     #[serde(default)]
     source_breakdown: Vec<(String, CachedDailySourceInfo)>,
+    #[serde(default)]
+    message_count: u32,
+    #[serde(default)]
+    turn_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,6 +156,10 @@ struct CachedHourlyUsage {
     cost: f64,
     clients: Vec<String>,
     models: Vec<(String, CachedHourlyModelInfo)>,
+    #[serde(default)]
+    message_count: u32,
+    #[serde(default)]
+    turn_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -351,6 +359,8 @@ impl From<&HourlyUsage> for CachedHourlyUsage {
                 .iter()
                 .map(|(k, v)| (k.clone(), v.into()))
                 .collect(),
+            message_count: h.message_count,
+            turn_count: h.turn_count,
         }
     }
 }
@@ -366,6 +376,8 @@ impl TryFrom<CachedHourlyUsage> for HourlyUsage {
             cost: h.cost,
             clients: h.clients.into_iter().collect(),
             models: h.models.into_iter().map(|(k, v)| (k, v.into())).collect(),
+            message_count: h.message_count,
+            turn_count: h.turn_count,
         })
     }
 }
@@ -382,6 +394,8 @@ impl From<&DailyUsage> for CachedDailyUsage {
                 .iter()
                 .map(|(key, value)| (key.clone(), value.into()))
                 .collect(),
+            message_count: d.message_count,
+            turn_count: d.turn_count,
         }
     }
 }
@@ -441,6 +455,8 @@ impl TryFrom<CachedDailyUsage> for DailyUsage {
             tokens: d.tokens.into(),
             cost: d.cost,
             source_breakdown,
+            message_count: d.message_count,
+            turn_count: d.turn_count,
         })
     }
 }
