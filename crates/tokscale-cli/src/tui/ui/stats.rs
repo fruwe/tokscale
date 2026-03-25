@@ -9,6 +9,21 @@ use super::widgets::{
 use crate::tui::app::{App, ClickAction};
 
 const CELL_WIDTH: u16 = 2;
+
+fn selection_foreground(background: Color) -> Color {
+    match background {
+        Color::Rgb(r, g, b) => {
+            let luminance = (u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114) / 1000;
+            if luminance >= 140 {
+                Color::Black
+            } else {
+                Color::White
+            }
+        }
+        Color::Indexed(index) if index >= 8 => Color::Black,
+        _ => Color::White,
+    }
+}
 const MONTH_LABELS: &[&str] = &[
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
@@ -143,18 +158,22 @@ fn render_graph(frame: &mut Frame, app: &mut App, area: Rect) {
                 Some(day) => {
                     let color = intensity_color(day.intensity);
                     if is_selected {
-                        ("▓▓", Style::default().fg(app.theme.foreground).bg(color))
+                        (
+                            "▓▓",
+                            Style::default().fg(selection_foreground(color)).bg(color),
+                        )
                     } else {
                         ("██", Style::default().fg(color))
                     }
                 }
                 None => {
                     if is_selected {
+                        let empty_bg = theme_colors[0];
                         (
                             "▓▓",
                             Style::default()
-                                .fg(app.theme.foreground)
-                                .bg(theme_colors[0]),
+                                .fg(selection_foreground(empty_bg))
+                                .bg(empty_bg),
                         )
                     } else {
                         ("· ", Style::default().fg(app.theme.border))
@@ -668,5 +687,21 @@ fn truncate_model_name(s: &str, max_chars: usize) -> String {
     } else {
         let head: String = s.chars().take(max_chars - 1).collect();
         format!("{}…", head)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::selection_foreground;
+    use ratatui::style::Color;
+
+    #[test]
+    fn selection_foreground_uses_light_text_on_dark_backgrounds() {
+        assert_eq!(selection_foreground(Color::Rgb(40, 44, 52)), Color::White);
+    }
+
+    #[test]
+    fn selection_foreground_uses_dark_text_on_bright_backgrounds() {
+        assert_eq!(selection_foreground(Color::Rgb(250, 189, 47)), Color::Black);
     }
 }

@@ -28,10 +28,6 @@ pub struct StackedBarData {
 
 /// Render a stacked bar chart where each bar shows model breakdown
 pub fn render_stacked_bar_chart(frame: &mut Frame, app: &App, area: Rect, data: &[StackedBarData]) {
-    if data.is_empty() {
-        return;
-    }
-
     let is_very_narrow = app.is_very_narrow();
     let y_label_width: u16 = if is_very_narrow { 6 } else { 7 };
 
@@ -55,6 +51,10 @@ pub fn render_stacked_bar_chart(frame: &mut Frame, app: &App, area: Rect, data: 
         for x in area.x..(area.x + area.width) {
             buf[(x, y)].set_style(Style::default().bg(app.theme.background));
         }
+    }
+
+    if data.is_empty() {
+        return;
     }
 
     let get_bar_width = |index: usize| -> usize {
@@ -316,6 +316,35 @@ mod tests {
             .expect("first draw should succeed");
         terminal
             .draw(|frame| render_stacked_bar_chart(frame, &purple, area, &data))
+            .expect("second draw should succeed");
+
+        let buffer = terminal.backend().buffer();
+        let stale_cell = &buffer[(8, 2)];
+
+        assert_eq!(stale_cell.bg, purple.theme.background);
+    }
+
+    #[test]
+    fn stacked_bar_chart_repaints_background_for_empty_data() {
+        let mut terminal = Terminal::new(TestBackend::new(40, 10)).expect("terminal should build");
+        let gruvbox = test_app("gtuvbox");
+        let purple = test_app("purple");
+        let area = Rect::new(0, 0, 40, 8);
+        let data = vec![StackedBarData {
+            date: "03/02".to_string(),
+            models: vec![ModelSegment {
+                model_id: "gpt-5.4".to_string(),
+                tokens: 10,
+                color: Color::Green,
+            }],
+            total: 10,
+        }];
+
+        terminal
+            .draw(|frame| render_stacked_bar_chart(frame, &gruvbox, area, &data))
+            .expect("first draw should succeed");
+        terminal
+            .draw(|frame| render_stacked_bar_chart(frame, &purple, area, &[]))
             .expect("second draw should succeed");
 
         let buffer = terminal.backend().buffer();
