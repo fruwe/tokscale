@@ -39,6 +39,9 @@ pub struct UnifiedMessage {
     pub message_count: i32,
     pub agent: Option<String>,
     pub dedup_key: Option<String>,
+    /// True if this message is the first assistant response after a user turn.
+    /// Used to count user interaction turns (as opposed to API message count).
+    pub is_turn_start: bool,
 }
 
 const fn default_message_count() -> i32 {
@@ -235,6 +238,7 @@ impl UnifiedMessage {
             message_count: default_message_count(),
             agent,
             dedup_key,
+            is_turn_start: false,
         }
     }
 
