@@ -323,6 +323,8 @@ pub struct HourlyUsage {
     pub cache_read: i64,
     pub cache_write: i64,
     pub message_count: i32,
+    /// Number of user interaction turns (user→assistant boundaries).
+    pub turn_count: i32,
     pub cost: f64,
 }
 
@@ -1285,6 +1287,7 @@ struct HourAggregator {
     cache_read: i64,
     cache_write: i64,
     message_count: i32,
+    turn_count: i32,
     cost: f64,
 }
 
@@ -1337,6 +1340,9 @@ pub async fn get_hourly_report(options: ReportOptions) -> Result<HourlyReport, S
         entry.cache_read += msg.tokens.cache_read;
         entry.cache_write += msg.tokens.cache_write;
         entry.message_count += msg.message_count.max(0);
+        if msg.is_turn_start {
+            entry.turn_count += 1;
+        }
         entry.cost += msg.cost;
     }
 
@@ -1351,6 +1357,7 @@ pub async fn get_hourly_report(options: ReportOptions) -> Result<HourlyReport, S
             cache_read: agg.cache_read,
             cache_write: agg.cache_write,
             message_count: agg.message_count,
+            turn_count: agg.turn_count,
             cost: agg.cost,
         })
         .collect();
@@ -1970,6 +1977,7 @@ pub fn parsed_to_unified(msg: &ParsedMessage, cost: f64) -> UnifiedMessage {
         message_count: msg.message_count,
         agent: msg.agent.clone(),
         dedup_key: None,
+        is_turn_start: false,
     }
 }
 
