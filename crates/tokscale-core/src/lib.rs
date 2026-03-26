@@ -1292,8 +1292,16 @@ pub async fn get_hourly_report(options: ReportOptions) -> Result<HourlyReport, S
         .into_iter()
         .map(|(hour, agg)| HourlyUsage {
             hour,
-            clients: agg.clients.into_iter().collect(),
-            models: agg.models.into_iter().collect(),
+            clients: {
+                let mut v: Vec<String> = agg.clients.into_iter().collect();
+                v.sort();
+                v
+            },
+            models: {
+                let mut v: Vec<String> = agg.models.into_iter().collect();
+                v.sort();
+                v
+            },
             input: agg.input,
             output: agg.output,
             cache_read: agg.cache_read,
