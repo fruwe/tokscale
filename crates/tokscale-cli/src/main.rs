@@ -284,8 +284,10 @@ enum Commands {
         qwen: bool,
         #[arg(long, help = "Show only Roo Code usage")]
         roocode: bool,
-        #[arg(long, help = "Show only Kilo usage")]
+        #[arg(long, help = "Show only KiloCode usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Kilo CLI usage")]
+        kilo: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -786,6 +788,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            kilo,
             mux,
             synthetic,
             today,
@@ -811,6 +814,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                kilo,
                 mux,
                 synthetic,
             });
