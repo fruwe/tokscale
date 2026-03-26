@@ -320,18 +320,22 @@ impl App {
             }
             KeyCode::Tab => {
                 self.current_tab = self.current_tab.next();
+                self.apply_tab_sort_defaults();
                 self.reset_selection();
             }
             KeyCode::BackTab => {
                 self.current_tab = self.current_tab.prev();
+                self.apply_tab_sort_defaults();
                 self.reset_selection();
             }
             KeyCode::Left => {
                 self.current_tab = self.current_tab.prev();
+                self.apply_tab_sort_defaults();
                 self.reset_selection();
             }
             KeyCode::Right => {
                 self.current_tab = self.current_tab.next();
+                self.apply_tab_sort_defaults();
                 self.reset_selection();
             }
             KeyCode::Up => {
@@ -506,8 +510,12 @@ impl App {
         self.selected_index = 0;
         self.selected_graph_cell = None;
         self.stats_breakdown_total_lines = 0;
+    }
 
-        // Hourly tab defaults to newest-first; other tabs keep cost sort
+    /// Apply per-tab sort defaults when switching tabs.
+    /// Must be called AFTER updating `self.current_tab`, before `reset_selection`.
+    fn apply_tab_sort_defaults(&mut self) {
+        // Hourly tab shows time-ordered data by default; other tabs keep cost sort.
         if self.current_tab == Tab::Hourly {
             self.sort_field = SortField::Date;
             self.sort_direction = SortDirection::Descending;
