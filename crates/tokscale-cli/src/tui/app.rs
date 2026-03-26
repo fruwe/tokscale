@@ -1037,19 +1037,21 @@ mod tests {
     #[test]
     fn test_tab_all() {
         let tabs = Tab::all();
-        assert_eq!(tabs.len(), 5);
+        assert_eq!(tabs.len(), 6);
         assert_eq!(tabs[0], Tab::Overview);
         assert_eq!(tabs[1], Tab::Models);
         assert_eq!(tabs[2], Tab::Daily);
-        assert_eq!(tabs[3], Tab::Stats);
-        assert_eq!(tabs[4], Tab::Agents);
+        assert_eq!(tabs[3], Tab::Hourly);
+        assert_eq!(tabs[4], Tab::Stats);
+        assert_eq!(tabs[5], Tab::Agents);
     }
 
     #[test]
     fn test_tab_next() {
         assert_eq!(Tab::Overview.next(), Tab::Models);
         assert_eq!(Tab::Models.next(), Tab::Daily);
-        assert_eq!(Tab::Daily.next(), Tab::Stats);
+        assert_eq!(Tab::Daily.next(), Tab::Hourly);
+        assert_eq!(Tab::Hourly.next(), Tab::Stats);
         assert_eq!(Tab::Stats.next(), Tab::Agents);
         assert_eq!(Tab::Agents.next(), Tab::Overview);
     }
@@ -1059,7 +1061,8 @@ mod tests {
         assert_eq!(Tab::Overview.prev(), Tab::Agents);
         assert_eq!(Tab::Models.prev(), Tab::Overview);
         assert_eq!(Tab::Daily.prev(), Tab::Models);
-        assert_eq!(Tab::Stats.prev(), Tab::Daily);
+        assert_eq!(Tab::Hourly.prev(), Tab::Daily);
+        assert_eq!(Tab::Stats.prev(), Tab::Hourly);
         assert_eq!(Tab::Agents.prev(), Tab::Stats);
     }
 
@@ -1363,6 +1366,9 @@ mod tests {
         assert_eq!(app.current_tab, Tab::Daily);
 
         app.handle_key_event(key(KeyCode::Tab));
+        assert_eq!(app.current_tab, Tab::Hourly);
+
+        app.handle_key_event(key(KeyCode::Tab));
         assert_eq!(app.current_tab, Tab::Stats);
 
         app.handle_key_event(key(KeyCode::Tab));
@@ -1382,6 +1388,9 @@ mod tests {
 
         app.handle_key_event(key(KeyCode::BackTab));
         assert_eq!(app.current_tab, Tab::Stats);
+
+        app.handle_key_event(key(KeyCode::BackTab));
+        assert_eq!(app.current_tab, Tab::Hourly);
 
         app.handle_key_event(key(KeyCode::BackTab));
         assert_eq!(app.current_tab, Tab::Daily);
