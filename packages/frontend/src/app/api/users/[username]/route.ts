@@ -244,18 +244,57 @@ export async function GET(_request: Request, { params }: RouteParams) {
           for (const [rawClient, data] of Object.entries(day.sourceBreakdown)) {
             const client = normalizeClientId(rawClient);
             const breakdown = data as ClientBreakdown;
-            clients[client] = {
-              tokens: breakdown.tokens || 0,
-              cost: breakdown.cost || 0,
-              input: breakdown.input || 0,
-              output: breakdown.output || 0,
-              cacheRead: breakdown.cacheRead || 0,
-              cacheWrite: breakdown.cacheWrite || 0,
-              reasoning: breakdown.reasoning || 0,
-              messages: breakdown.messages || 0,
-              models: breakdown.models,
-              modelId: breakdown.modelId,
-            };
+            if (clients[client]) {
+              // Merge when normalization creates duplicate keys (e.g. kilocode + kilo → kilo)
+              clients[client].tokens += breakdown.tokens || 0;
+              clients[client].cost += breakdown.cost || 0;
+              clients[client].input += breakdown.input || 0;
+              clients[client].output += breakdown.output || 0;
+              clients[client].cacheRead += breakdown.cacheRead || 0;
+              clients[client].cacheWrite += breakdown.cacheWrite || 0;
+              clients[client].reasoning += breakdown.reasoning || 0;
+              clients[client].messages += breakdown.messages || 0;
+              if (breakdown.models) {
+                clients[client].models = clients[client].models || {};
+                for (const [modelId, modelData] of Object.entries(breakdown.models)) {
+                  const existingModel = clients[client].models![modelId];
+                  if (existingModel) {
+                    existingModel.tokens += modelData.tokens || 0;
+                    existingModel.cost += modelData.cost || 0;
+                    existingModel.input += modelData.input || 0;
+                    existingModel.output += modelData.output || 0;
+                    existingModel.cacheRead += modelData.cacheRead || 0;
+                    existingModel.cacheWrite += modelData.cacheWrite || 0;
+                    existingModel.reasoning += modelData.reasoning || 0;
+                    existingModel.messages += modelData.messages || 0;
+                  } else {
+                    clients[client].models![modelId] = {
+                      tokens: modelData.tokens || 0,
+                      cost: modelData.cost || 0,
+                      input: modelData.input || 0,
+                      output: modelData.output || 0,
+                      cacheRead: modelData.cacheRead || 0,
+                      cacheWrite: modelData.cacheWrite || 0,
+                      reasoning: modelData.reasoning || 0,
+                      messages: modelData.messages || 0,
+                    };
+                  }
+                }
+              }
+            } else {
+              clients[client] = {
+                tokens: breakdown.tokens || 0,
+                cost: breakdown.cost || 0,
+                input: breakdown.input || 0,
+                output: breakdown.output || 0,
+                cacheRead: breakdown.cacheRead || 0,
+                cacheWrite: breakdown.cacheWrite || 0,
+                reasoning: breakdown.reasoning || 0,
+                messages: breakdown.messages || 0,
+                models: breakdown.models,
+                modelId: breakdown.modelId,
+              };
+            }
             if (breakdown.models) {
               for (const [modelId, modelData] of Object.entries(breakdown.models)) {
                 const existingModel = models[modelId];
@@ -267,7 +306,13 @@ export async function GET(_request: Request, { params }: RouteParams) {
                 }
               }
             } else if (breakdown.modelId) {
-              models[breakdown.modelId] = { tokens: breakdown.tokens || 0, cost: breakdown.cost || 0 };
+              const existingModel = models[breakdown.modelId];
+              if (existingModel) {
+                existingModel.tokens += breakdown.tokens || 0;
+                existingModel.cost += breakdown.cost || 0;
+              } else {
+                models[breakdown.modelId] = { tokens: breakdown.tokens || 0, cost: breakdown.cost || 0 };
+              }
             }
           }
         }
