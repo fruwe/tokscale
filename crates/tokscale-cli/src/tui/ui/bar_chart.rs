@@ -30,6 +30,15 @@ pub struct StackedBarData {
 pub fn render_stacked_bar_chart(frame: &mut Frame, app: &App, area: Rect, data: &[StackedBarData]) {
     let is_very_narrow = app.is_very_narrow();
     let y_label_width: u16 = if is_very_narrow { 6 } else { 7 };
+    let buf = frame.buffer_mut();
+
+    for y in area.y..(area.y + area.height) {
+        for x in area.x..(area.x + area.width) {
+            buf[(x, y)]
+                .set_char(' ')
+                .set_style(Style::default().bg(app.theme.background));
+        }
+    }
 
     let chart_width = area.width.saturating_sub(y_label_width) as usize;
     let chart_height = area.height.saturating_sub(3) as usize;
@@ -43,15 +52,7 @@ pub fn render_stacked_bar_chart(frame: &mut Frame, app: &App, area: Rect, data: 
         .map(|d| d.total as f64)
         .fold(0.0_f64, |a, b| a.max(b))
         .max(1.0);
-
-    let buf = frame.buffer_mut();
     let bar_count = data.len();
-
-    for y in area.y..(area.y + area.height) {
-        for x in area.x..(area.x + area.width) {
-            buf[(x, y)].set_style(Style::default().bg(app.theme.background));
-        }
-    }
 
     if data.is_empty() {
         return;
@@ -259,7 +260,12 @@ fn get_stacked_bar_content(
 mod tests {
     use super::{render_stacked_bar_chart, ModelSegment, StackedBarData};
     use crate::tui::app::{App, TuiConfig};
-    use ratatui::{backend::TestBackend, layout::Rect, style::Color, Terminal};
+    use ratatui::{
+        backend::TestBackend,
+        layout::Rect,
+        style::{Color, Style},
+        Terminal,
+    };
 
     fn test_app(theme: &str) -> App {
         App::new_with_cached_data(
@@ -351,5 +357,53 @@ mod tests {
         let stale_cell = &buffer[(8, 2)];
 
         assert_eq!(stale_cell.bg, purple.theme.background);
+    }
+
+    #[test]
+    fn stacked_bar_chart_repaints_background_for_degenerate_chart_area() {
+        let mut terminal = Terminal::new(TestBackend::new(40, 10)).expect("terminal should build");
+        let gruvbox = test_app("gtuvbox");
+        let purple = test_app("purple");
+        let data = vec![StackedBarData {
+            date: "03/02".to_string(),
+            models: vec![ModelSegment {
+                model_id: "gpt-5.4".to_string(),
+                tokens: 10,
+                color: Color::Green,
+            }],
+            total: 10,
+        }];
+
+        terminal
+            .draw(|frame| render_stacked_bar_chart(frame, &gruvbox, Rect::new(0, 0, 40, 8), &data))
+            .expect("first draw should succeed");
+        terminal
+            .draw(|frame| render_stacked_bar_chart(frame, &purple, Rect::new(0, 0, 6, 8), &data))
+            .expect("second draw should succeed");
+
+        let buffer = terminal.backend().buffer();
+        let stale_cell = &buffer[(2, 2)];
+
+        assert_eq!(stale_cell.bg, purple.theme.background);
+    }
+
+    #[test]
+    fn stacked_bar_chart_clears_existing_glyphs_for_empty_data() {
+        let mut terminal = Terminal::new(TestBackend::new(40, 10)).expect("terminal should build");
+        let purple = test_app("purple");
+        let area = Rect::new(0, 0, 40, 8);
+
+        terminal.current_buffer_mut()[(38, 2)]
+            .set_char('█')
+            .set_style(Style::default().bg(Color::Red));
+
+        terminal
+            .draw(|frame| render_stacked_bar_chart(frame, &purple, area, &[]))
+            .expect("draw should succeed");
+
+        let cleared_cell = &terminal.backend().buffer()[(38, 2)];
+
+        assert_eq!(cleared_cell.symbol(), " ");
+        assert_eq!(cleared_cell.bg, purple.theme.background);
     }
 }
