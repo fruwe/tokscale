@@ -223,7 +223,6 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
                 | ClientId::Codex
                 | ClientId::OpenClaw
                 | ClientId::RooCode
-                | ClientId::KiloCode
                 | ClientId::Kilo
         ) {
             continue;
@@ -231,13 +230,13 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
 
         let def = client_id.data();
         let path = def.resolve_path(home_dir);
-        tasks.push((*client_id, path, def.pattern));
+        tasks.push((*client_id, path, def.pattern()));
     }
 
     // Extra scan directories from TOKSCALE_EXTRA_DIRS env var
     let extra_dirs_val = std::env::var("TOKSCALE_EXTRA_DIRS").unwrap_or_default();
     for (client_id, path) in parse_extra_dirs(&extra_dirs_val, &enabled) {
-        let pattern = client_id.data().pattern;
+        let pattern = client_id.data().pattern();
         tasks.push((client_id, path, pattern));
     }
 
@@ -257,7 +256,7 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
         tasks.push((
             ClientId::OpenCode,
             opencode_path,
-            ClientId::OpenCode.data().pattern,
+            ClientId::OpenCode.data().pattern(),
         ));
     }
 
@@ -266,21 +265,25 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
         let codex_home =
             std::env::var("CODEX_HOME").unwrap_or_else(|_| format!("{}/.codex", home_dir));
         let codex_path = ClientId::Codex.data().resolve_path(home_dir);
-        tasks.push((ClientId::Codex, codex_path, ClientId::Codex.data().pattern));
+        tasks.push((
+            ClientId::Codex,
+            codex_path,
+            ClientId::Codex.data().pattern(),
+        ));
 
         // Codex archived sessions: ~/.codex/archived_sessions/**/*.jsonl
         let codex_archived_path = format!("{}/archived_sessions", codex_home);
         tasks.push((
             ClientId::Codex,
             codex_archived_path,
-            ClientId::Codex.data().pattern,
+            ClientId::Codex.data().pattern(),
         ));
 
         // Codex headless: <headless_root>/codex/*.jsonl
         for root in &headless_roots {
             let codex_headless_path = root.join("codex");
             let path = codex_headless_path.to_string_lossy().to_string();
-            tasks.push((ClientId::Codex, path, ClientId::Codex.data().pattern));
+            tasks.push((ClientId::Codex, path, ClientId::Codex.data().pattern()));
         }
     }
 
@@ -290,7 +293,7 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
         tasks.push((
             ClientId::OpenClaw,
             openclaw_path,
-            ClientId::OpenClaw.data().pattern,
+            ClientId::OpenClaw.data().pattern(),
         ));
 
         // Legacy paths (Clawd -> Moltbot -> OpenClaw rebrand history)
@@ -298,21 +301,21 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
         tasks.push((
             ClientId::OpenClaw,
             clawdbot_path,
-            ClientId::OpenClaw.data().pattern,
+            ClientId::OpenClaw.data().pattern(),
         ));
 
         let moltbot_path = format!("{}/.moltbot/agents", home_dir);
         tasks.push((
             ClientId::OpenClaw,
             moltbot_path,
-            ClientId::OpenClaw.data().pattern,
+            ClientId::OpenClaw.data().pattern(),
         ));
 
         let moldbot_path = format!("{}/.moldbot/agents", home_dir);
         tasks.push((
             ClientId::OpenClaw,
             moldbot_path,
-            ClientId::OpenClaw.data().pattern,
+            ClientId::OpenClaw.data().pattern(),
         ));
     }
 
@@ -330,7 +333,7 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
         tasks.push((
             ClientId::RooCode,
             local_path,
-            ClientId::RooCode.data().pattern,
+            ClientId::RooCode.data().pattern(),
         ));
 
         let server_path = format!(
@@ -340,27 +343,19 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
         tasks.push((
             ClientId::RooCode,
             server_path,
-            ClientId::RooCode.data().pattern,
+            ClientId::RooCode.data().pattern(),
         ));
     }
 
-    if enabled.contains(&ClientId::KiloCode) {
-        let local_path = ClientId::KiloCode.data().resolve_path(home_dir);
-        tasks.push((
-            ClientId::KiloCode,
-            local_path,
-            ClientId::KiloCode.data().pattern,
-        ));
+    if enabled.contains(&ClientId::Kilo) {
+        let local_path = ClientId::Kilo.data().resolve_path(home_dir);
+        tasks.push((ClientId::Kilo, local_path, ClientId::Kilo.data().pattern()));
 
         let server_path = format!(
             "{}/.vscode-server/data/User/globalStorage/kilocode.kilo-code/tasks",
             home_dir
         );
-        tasks.push((
-            ClientId::KiloCode,
-            server_path,
-            ClientId::KiloCode.data().pattern,
-        ));
+        tasks.push((ClientId::Kilo, server_path, ClientId::Kilo.data().pattern()));
     }
 
     // Kilo CLI: SQLite database at ~/.local/share/kilo/kilo.db
@@ -977,10 +972,10 @@ mod tests {
         let home = dir.path();
         setup_mock_kilocode_dir(home);
 
-        let result = scan_all_clients(home.to_str().unwrap(), &["kilocode".to_string()]);
-        assert_eq!(result.get(ClientId::KiloCode).len(), 2);
+        let result = scan_all_clients(home.to_str().unwrap(), &["kilo".to_string()]);
+        assert_eq!(result.get(ClientId::Kilo).len(), 2);
         assert!(result
-            .get(ClientId::KiloCode)
+            .get(ClientId::Kilo)
             .iter()
             .all(|p| p.ends_with("ui_messages.json")));
     }

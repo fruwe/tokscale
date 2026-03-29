@@ -32,7 +32,6 @@ const SUPPORTED_SOURCES = [
   "kimi",
   "qwen",
   "roocode",
-  "kilocode",
   "kilo",
   "mux",
   "synthetic",
