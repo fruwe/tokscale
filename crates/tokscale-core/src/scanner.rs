@@ -358,11 +358,12 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
         tasks.push((ClientId::Kilo, server_path, ClientId::Kilo.data().pattern()));
     }
 
-    // Kilo CLI: SQLite database at ~/.local/share/kilo/kilo.db
     if enabled.contains(&ClientId::Kilo) {
-        let kilo_db_path = ClientId::Kilo.data().resolve_path(home_dir);
-        if std::path::Path::new(&kilo_db_path).exists() {
-            result.kilo_db = Some(PathBuf::from(kilo_db_path));
+        if let Some(cli_source) = ClientId::Kilo.data().source_by_tag("cli") {
+            let kilo_db_path = cli_source.resolve_path(home_dir);
+            if std::path::Path::new(&kilo_db_path).exists() {
+                result.kilo_db = Some(PathBuf::from(kilo_db_path));
+            }
         }
     }
 
