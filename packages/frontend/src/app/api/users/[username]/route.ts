@@ -3,6 +3,11 @@ import { db, users, submissions, dailyBreakdown } from "@/lib/db";
 import { eq, desc, sql, and, gte } from "drizzle-orm";
 import { buildSubmissionFreshness } from "@/lib/submissionFreshness";
 
+const LEGACY_CLIENT_ALIASES: Record<string, string> = { kilocode: "kilo" };
+function normalizeClientId(id: string): string {
+  return LEGACY_CLIENT_ALIASES[id] ?? id;
+}
+
 export const revalidate = 60; // ISR: revalidate every 60 seconds
 
 interface RouteParams {
@@ -158,7 +163,8 @@ export async function GET(_request: Request, { params }: RouteParams) {
         existing.inputTokens += Number(day.inputTokens);
         existing.outputTokens += Number(day.outputTokens);
         if (day.sourceBreakdown) {
-          for (const [client, data] of Object.entries(day.sourceBreakdown)) {
+          for (const [rawClient, data] of Object.entries(day.sourceBreakdown)) {
+            const client = normalizeClientId(rawClient);
             const breakdown = data as ClientBreakdown;
             if (existing.clients[client]) {
               existing.clients[client].tokens += breakdown.tokens || 0;
@@ -235,9 +241,9 @@ export async function GET(_request: Request, { params }: RouteParams) {
         const clients: Record<string, ClientBreakdown> = {};
         const models: Record<string, { tokens: number; cost: number }> = {};
         if (day.sourceBreakdown) {
-          for (const [client, data] of Object.entries(day.sourceBreakdown)) {
+          for (const [rawClient, data] of Object.entries(day.sourceBreakdown)) {
+            const client = normalizeClientId(rawClient);
             const breakdown = data as ClientBreakdown;
-            // Normalize old DB data that may be missing reasoning and other fields
             clients[client] = {
               tokens: breakdown.tokens || 0,
               cost: breakdown.cost || 0,

@@ -50,6 +50,7 @@ export function SourceLogo({ sourceId, height = 14, className = "" }: SourceLogo
         return "/assets/logos/qwen.png";
       case "roocode":
         return "/assets/logos/roocode.png";
+      case "kilocode":
       case "kilo":
         return "/assets/logos/kilocode.png";
       case "mux":
