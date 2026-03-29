@@ -246,20 +246,90 @@ static SOURCES_MUX: [SourceDef; 1] = [SourceDef {
 }];
 
 pub static CLIENTS: [ClientDef; ClientId::COUNT] = [
-    ClientDef { id: "opencode", sources: &SOURCES_OPENCODE, headless: false, parse_local: true },
-    ClientDef { id: "claude", sources: &SOURCES_CLAUDE, headless: false, parse_local: true },
-    ClientDef { id: "codex", sources: &SOURCES_CODEX, headless: true, parse_local: true },
-    ClientDef { id: "cursor", sources: &SOURCES_CURSOR, headless: false, parse_local: false },
-    ClientDef { id: "gemini", sources: &SOURCES_GEMINI, headless: false, parse_local: true },
-    ClientDef { id: "amp", sources: &SOURCES_AMP, headless: false, parse_local: true },
-    ClientDef { id: "droid", sources: &SOURCES_DROID, headless: false, parse_local: true },
-    ClientDef { id: "openclaw", sources: &SOURCES_OPENCLAW, headless: false, parse_local: true },
-    ClientDef { id: "pi", sources: &SOURCES_PI, headless: false, parse_local: true },
-    ClientDef { id: "kimi", sources: &SOURCES_KIMI, headless: false, parse_local: true },
-    ClientDef { id: "qwen", sources: &SOURCES_QWEN, headless: false, parse_local: true },
-    ClientDef { id: "roocode", sources: &SOURCES_ROOCODE, headless: false, parse_local: true },
-    ClientDef { id: "kilo", sources: &SOURCES_KILO, headless: false, parse_local: true },
-    ClientDef { id: "mux", sources: &SOURCES_MUX, headless: false, parse_local: true },
+    ClientDef {
+        id: "opencode",
+        sources: &SOURCES_OPENCODE,
+        headless: false,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "claude",
+        sources: &SOURCES_CLAUDE,
+        headless: false,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "codex",
+        sources: &SOURCES_CODEX,
+        headless: true,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "cursor",
+        sources: &SOURCES_CURSOR,
+        headless: false,
+        parse_local: false,
+    },
+    ClientDef {
+        id: "gemini",
+        sources: &SOURCES_GEMINI,
+        headless: false,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "amp",
+        sources: &SOURCES_AMP,
+        headless: false,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "droid",
+        sources: &SOURCES_DROID,
+        headless: false,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "openclaw",
+        sources: &SOURCES_OPENCLAW,
+        headless: false,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "pi",
+        sources: &SOURCES_PI,
+        headless: false,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "kimi",
+        sources: &SOURCES_KIMI,
+        headless: false,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "qwen",
+        sources: &SOURCES_QWEN,
+        headless: false,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "roocode",
+        sources: &SOURCES_ROOCODE,
+        headless: false,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "kilo",
+        sources: &SOURCES_KILO,
+        headless: false,
+        parse_local: true,
+    },
+    ClientDef {
+        id: "mux",
+        sources: &SOURCES_MUX,
+        headless: false,
+        parse_local: true,
+    },
 ];
 
 pub struct ClientCounts {
