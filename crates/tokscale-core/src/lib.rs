@@ -830,7 +830,12 @@ fn parse_all_messages_with_pricing(
         })
         .collect();
     for outcome in kilocode_outcomes {
-        all_messages.extend(outcome.messages);
+        all_messages.extend(outcome.messages.into_iter().map(|mut msg| {
+            if msg.client == "kilocode" {
+                msg.client = "kilo".to_string();
+            }
+            msg
+        }));
         if let Some(entry) = outcome.cache_entry {
             source_cache.insert(entry);
         }
