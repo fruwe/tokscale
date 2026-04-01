@@ -66,6 +66,7 @@ fn get_source_id_lock_path() -> Result<PathBuf> {
 const SOURCE_ID_LOCK_RETRY_DELAY: Duration = Duration::from_millis(25);
 const SOURCE_ID_LOCK_STALE_AFTER: Duration = Duration::from_secs(2);
 const SOURCE_ID_LOCK_MAX_WAIT: Duration = Duration::from_secs(10);
+const SOURCE_ID_LOCK_FORCE_STALE_AFTER: Duration = SOURCE_ID_LOCK_MAX_WAIT;
 
 fn ensure_config_dir() -> Result<()> {
     let config_dir = home_dir()?.join(".config/tokscale");
@@ -235,6 +236,17 @@ fn lock_owner_is_alive(pid: u32) -> Option<bool> {
     }
 }
 
+fn should_remove_stale_source_id_lock(age: Duration, owner_is_alive: Option<bool>) -> bool {
+    if age >= SOURCE_ID_LOCK_FORCE_STALE_AFTER {
+        return true;
+    }
+
+    match owner_is_alive {
+        Some(false) | None => age >= SOURCE_ID_LOCK_STALE_AFTER,
+        Some(true) => false,
+    }
+}
+
 fn write_source_id_lock_state(mut file: fs::File, state: SourceIdLockState) -> Result<()> {
     let payload = serialize_source_id_lock_state(state);
     file.write_all(payload.as_bytes())?;
@@ -296,15 +308,12 @@ fn acquire_source_id_lock() -> Result<SourceIdLock> {
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
                 let state = read_source_id_lock_state(&lock_path);
                 let age = lock_age(&lock_path, state);
-                let owner_is_dead = match state {
-                    Some(lock_state) => match lock_owner_is_alive(lock_state.pid) {
-                        Some(is_alive) => !is_alive,
-                        None => age >= SOURCE_ID_LOCK_STALE_AFTER,
-                    },
-                    None => true,
+                let owner_is_alive = match state {
+                    Some(lock_state) => lock_owner_is_alive(lock_state.pid),
+                    None => None,
                 };
 
-                if owner_is_dead && age >= SOURCE_ID_LOCK_STALE_AFTER {
+                if should_remove_stale_source_id_lock(age, owner_is_alive) {
                     let _ = remove_source_id_lock_if_matches(&lock_path, state);
                     continue;
                 }
@@ -819,6 +828,39 @@ mod tests {
         unsafe {
             env::remove_var("TOKSCALE_SOURCE_NAME");
         }
+    }
+
+    #[test]
+    fn test_should_remove_stale_source_id_lock_when_owner_dead_after_stale_threshold() {
+        assert!(should_remove_stale_source_id_lock(
+            SOURCE_ID_LOCK_STALE_AFTER,
+            Some(false)
+        ));
+    }
+
+    #[test]
+    fn test_should_remove_stale_source_id_lock_when_probe_is_unknown_after_stale_threshold() {
+        assert!(should_remove_stale_source_id_lock(
+            SOURCE_ID_LOCK_STALE_AFTER,
+            None
+        ));
+    }
+
+    #[test]
+    fn test_should_remove_stale_source_id_lock_when_age_exceeds_force_threshold_even_if_pid_is_alive(
+    ) {
+        assert!(should_remove_stale_source_id_lock(
+            SOURCE_ID_LOCK_FORCE_STALE_AFTER,
+            Some(true)
+        ));
+    }
+
+    #[test]
+    fn test_should_not_remove_live_source_id_lock_before_force_threshold() {
+        assert!(!should_remove_stale_source_id_lock(
+            SOURCE_ID_LOCK_STALE_AFTER,
+            Some(true)
+        ));
     }
 
     #[test]
