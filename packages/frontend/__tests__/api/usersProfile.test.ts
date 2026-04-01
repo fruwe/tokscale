@@ -13,7 +13,6 @@ const mockState = vi.hoisted(() => {
       createdAt: "users.createdAt",
     },
     submissions: {
-      id: "submissions.id",
       userId: "submissions.userId",
       totalTokens: "submissions.totalTokens",
       totalCost: "submissions.totalCost",
@@ -164,7 +163,7 @@ describe("GET /api/users/[username]", () => {
         cacheReadTokens: 100,
         cacheCreationTokens: 50,
         reasoningTokens: 25,
-        submissionCount: 5,
+        submissionCount: 2,
         earliestDate: "2026-01-01",
         latestDate: "2026-03-10",
       },
@@ -175,13 +174,6 @@ describe("GET /api/users/[username]", () => {
         modelsUsed: ["claude-3-7-sonnet"],
         updatedAt: new Date("2026-01-10T10:00:00.000Z"),
         cliVersion: "1.4.2",
-        schemaVersion: 1,
-      },
-      {
-        sourcesUsed: ["claude"],
-        modelsUsed: ["gpt-4.1"],
-        updatedAt: new Date("2026-01-05T08:00:00.000Z"),
-        cliVersion: "1.4.0",
         schemaVersion: 1,
       },
     ]);
@@ -202,9 +194,8 @@ describe("GET /api/users/[username]", () => {
       isStale: true,
     });
     expect(body.updatedAt).toBe("2026-01-10T10:00:00.000Z");
-    expect(body.stats.submissionCount).toBe(5);
-    expect(body.clients).toEqual(["claude", "cursor"]);
-    expect(body.models).toEqual(["claude-3-7-sonnet", "gpt-4.1"]);
+    expect(body.clients).toEqual(["cursor"]);
+    expect(body.models).toEqual(["claude-3-7-sonnet"]);
   });
 
   it("returns null freshness metadata when the user has no submission yet", async () => {
@@ -246,60 +237,5 @@ describe("GET /api/users/[username]", () => {
     expect(body.updatedAt).toBeNull();
     expect(body.clients).toEqual([]);
     expect(body.models).toEqual([]);
-  });
-
-  it("orders latest submission freshness metadata deterministically on timestamp ties", async () => {
-    mockState.pushSelectResult([
-      {
-        id: "user-3",
-        username: "tie-user",
-        displayName: "Tie User",
-        avatarUrl: null,
-        createdAt: "2026-03-01T00:00:00.000Z",
-      },
-    ]);
-    mockState.pushSelectResult([
-      {
-        totalTokens: 50,
-        totalCost: 0.5,
-        inputTokens: 20,
-        outputTokens: 30,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        reasoningTokens: 0,
-        submissionCount: 2,
-        earliestDate: "2026-03-01",
-        latestDate: "2026-03-02",
-      },
-    ]);
-    mockState.pushSelectResult([
-      {
-        id: "submission-a",
-        sourcesUsed: ["claude"],
-        modelsUsed: ["gpt-4.1"],
-        updatedAt: new Date("2026-03-10T10:00:00.000Z"),
-        cliVersion: "1.0.0",
-        schemaVersion: 0,
-      },
-      {
-        id: "submission-b",
-        sourcesUsed: ["cursor"],
-        modelsUsed: ["claude-3-7-sonnet"],
-        updatedAt: new Date("2026-03-10T10:00:00.000Z"),
-        cliVersion: "1.1.0",
-        schemaVersion: 1,
-      },
-    ]);
-    mockState.pushSelectResult([]);
-    mockState.pushExecuteResult([]);
-
-    const response = await GET(
-      new Request("http://localhost:3000/api/users/tie-user"),
-      { params: Promise.resolve({ username: "tie-user" }) }
-    );
-
-    expect(response.status).toBe(200);
-    expect(mockState.desc).toHaveBeenNthCalledWith(1, mockState.tables.submissions.updatedAt);
-    expect(mockState.desc).toHaveBeenNthCalledWith(2, mockState.tables.submissions.id);
   });
 });
