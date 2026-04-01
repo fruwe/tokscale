@@ -37,6 +37,70 @@ export interface DayTotals {
   reasoningTokens: number;
 }
 
+export interface SubmissionScopeRow {
+  id: string;
+  sourceId: string | null;
+}
+
+export type SubmissionScopeResolution =
+  | {
+      kind: "existing";
+      submissionId: string;
+      upgradeLegacyRow: boolean;
+    }
+  | {
+      kind: "create";
+    }
+  | {
+      kind: "rejectMissingSourceIdentity";
+    };
+
+export function resolveSubmissionScope(
+  existingRows: SubmissionScopeRow[],
+  incomingSourceId: string | null
+): SubmissionScopeResolution {
+  const hasScopedRows = existingRows.some((row) => row.sourceId != null);
+  const exactMatch = incomingSourceId
+    ? existingRows.find((row) => row.sourceId === incomingSourceId)
+    : undefined;
+  if (exactMatch) {
+    return {
+      kind: "existing",
+      submissionId: exactMatch.id,
+      upgradeLegacyRow: false,
+    };
+  }
+
+  const unsourcedRow =
+    existingRows.find((row) => row.sourceId == null) ?? null;
+
+  if (incomingSourceId) {
+    if (unsourcedRow && !hasScopedRows) {
+      return {
+        kind: "existing",
+        submissionId: unsourcedRow.id,
+        upgradeLegacyRow: true,
+      };
+    }
+
+    return { kind: "create" };
+  }
+
+  if (hasScopedRows) {
+    return { kind: "rejectMissingSourceIdentity" };
+  }
+
+  if (unsourcedRow) {
+    return {
+      kind: "existing",
+      submissionId: unsourcedRow.id,
+      upgradeLegacyRow: false,
+    };
+  }
+
+  return { kind: "create" };
+}
+
 export function recalculateDayTotals(
   clientBreakdown: Record<string, ClientBreakdownData>
 ): DayTotals {

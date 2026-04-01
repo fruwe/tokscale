@@ -12,8 +12,9 @@ import {
   integer,
   index,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // ============================================================================
 // USERS
@@ -144,6 +145,8 @@ export const submissions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    sourceId: varchar("source_id", { length: 255 }),
+    sourceName: varchar("source_name", { length: 255 }),
 
     totalTokens: bigint("total_tokens", { mode: "number" }).notNull(),
     totalCost: decimal("total_cost", { precision: 12, scale: 4 }).notNull(),
@@ -186,9 +189,17 @@ export const submissions = pgTable(
     index("idx_submissions_total_tokens").on(table.totalTokens),
     index("idx_submissions_created_at").on(table.createdAt),
     index("idx_submissions_date_range").on(table.dateStart, table.dateEnd),
-    index("idx_submissions_leaderboard").on(table.userId, table.totalTokens, table.totalCost, table.createdAt),
-    unique("submissions_user_id_unique").on(table.userId),
-    unique("submissions_user_hash_unique").on(table.userId, table.submissionHash),
+    index("idx_submissions_leaderboard").on(
+      table.userId,
+      table.totalTokens,
+      table.totalCost,
+      table.createdAt
+    ),
+    unique("submissions_user_source_unique")
+      .on(table.userId, table.sourceId),
+    uniqueIndex("submissions_user_unsourced_unique")
+      .on(table.userId)
+      .where(sql`${table.sourceId} is null`),
   ]
 );
 

@@ -48,7 +48,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
           cacheReadTokens: sql<number>`COALESCE(SUM(${submissions.cacheReadTokens}), 0)`,
           cacheCreationTokens: sql<number>`COALESCE(SUM(${submissions.cacheCreationTokens}), 0)`,
           reasoningTokens: sql<number>`COALESCE(SUM(${submissions.reasoningTokens}), 0)`,
-          submissionCount: sql<number>`COALESCE(MAX(${submissions.submitCount}), 0)`,
+          submissionCount: sql<number>`COALESCE(SUM(${submissions.submitCount}), 0)`,
           earliestDate: sql<string>`MIN(${submissions.dateStart})`,
           latestDate: sql<string>`MAX(${submissions.dateEnd})`,
         })
@@ -57,6 +57,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
 
       db
         .select({
+          id: submissions.id,
           sourcesUsed: submissions.sourcesUsed,
           modelsUsed: submissions.modelsUsed,
           updatedAt: submissions.updatedAt,
@@ -65,8 +66,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
         })
         .from(submissions)
         .where(eq(submissions.userId, user.id))
-        .orderBy(desc(submissions.updatedAt))
-        .limit(1),
+        .orderBy(desc(submissions.updatedAt), desc(submissions.id)),
 
       db.execute<{ rank: number }>(sql`
         WITH user_totals AS (
@@ -110,6 +110,17 @@ export async function GET(_request: Request, { params }: RouteParams) {
     const [stats] = statsResult;
     const [latestSubmission] = latestSubmissionResult;
     const rank = (rankResult as unknown as { rank: number }[])[0]?.rank || null;
+    const clients = new Set<string>();
+    const models = new Set<string>();
+
+    for (const submission of latestSubmissionResult) {
+      for (const client of submission.sourcesUsed || []) {
+        clients.add(normalizeClientId(client));
+      }
+      for (const model of submission.modelsUsed || []) {
+        models.add(model);
+      }
+    }
 
     type ModelData = {
       tokens: number;
@@ -443,8 +454,8 @@ export async function GET(_request: Request, { params }: RouteParams) {
         cliVersion: latestSubmission?.cliVersion,
         schemaVersion: latestSubmission?.schemaVersion,
       }),
-      clients: latestSubmission?.sourcesUsed || [],
-      models: latestSubmission?.modelsUsed || [],
+      clients: Array.from(clients).sort(),
+      models: Array.from(models).sort(),
       modelUsage,
       contributions: graphContributions,
     });
