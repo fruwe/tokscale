@@ -89,8 +89,8 @@ type ModuleExports = typeof import("../../src/lib/embed/getUserEmbedStats");
 let getUserEmbedStats: ModuleExports["getUserEmbedStats"];
 
 beforeAll(async () => {
-  const module = await import("../../src/lib/embed/getUserEmbedStats");
-  getUserEmbedStats = module.getUserEmbedStats;
+  const embedStatsLib = await import("../../src/lib/embed/getUserEmbedStats");
+  getUserEmbedStats = embedStatsLib.getUserEmbedStats;
 });
 
 beforeEach(() => {
