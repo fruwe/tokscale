@@ -454,7 +454,7 @@ function DangerConfirmationModal({
   }, [isTypedStep, typedMatch, isSubmitting, config, onSuccess, action]);
 
   return (
-    <ModalOverlay onClick={onClose}>
+    <ModalOverlay onClick={isSubmitting ? undefined : onClose}>
       <ModalCard onClick={(e) => e.stopPropagation()}>
         <StepIndicator>
           {["step-1", "step-2", "step-3"].slice(0, totalSteps).map((id, i) => (
