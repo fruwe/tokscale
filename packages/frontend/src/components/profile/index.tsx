@@ -534,7 +534,7 @@ function EmbedIcon() {
   );
 }
 
-export type ProfileTab = "activity" | "breakdown" | "models";
+export type ProfileTab = "activity" | "breakdown" | "models" | "sources";
 
 export interface ProfileTabBarProps {
   activeTab: ProfileTab;
@@ -619,6 +619,7 @@ export function ProfileTabBar({ activeTab, onTabChange }: ProfileTabBarProps) {
     { id: "activity", label: "Activity" },
     { id: "breakdown", label: "Token Breakdown" },
     { id: "models", label: "Models Used" },
+    { id: "sources", label: "Devices" },
   ];
 
   const handleKeyDown = (e: React.KeyboardEvent, currentIndex: number) => {

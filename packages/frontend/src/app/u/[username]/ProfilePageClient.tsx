@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import styled from "styled-components";
 import { Navigation } from "@/components/layout/Navigation";
 import { Footer } from "@/components/layout/Footer";
@@ -18,6 +18,7 @@ import {
   type ModelUsage,
 } from "@/components/profile";
 import type { TokenContributionData, DailyContribution, ClientType } from "@/lib/types";
+import { formatCurrency, formatNumber } from "@/lib/utils";
 
 interface ProfileData {
   user: {
@@ -51,72 +52,130 @@ interface ProfileData {
 
 interface ProfilePageClientProps {
   initialData: ProfileData;
-  username: string;
+  initialSources: SourceData[];
 }
 
-export default function ProfilePageClient({ initialData, username }: ProfilePageClientProps) {
+interface SourceData {
+  sourceId: string | null;
+  sourceName: string;
+  stats: {
+    totalTokens: number;
+    totalCost: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    reasoningTokens: number;
+    submissionCount: number;
+    activeDays: number;
+  };
+  dateRange: {
+    start: string | null;
+    end: string | null;
+  };
+  updatedAt: string | null;
+  clients: string[];
+  models: string[];
+  modelUsage?: ModelUsage[];
+  contributions: DailyContribution[];
+}
+
+function getSourceKey(sourceId: string | null): string {
+  return sourceId ?? "__legacy__";
+}
+
+function buildGraphData(
+  contributions: DailyContribution[],
+  stats: {
+    totalTokens: number;
+    totalCost: number;
+    activeDays: number;
+  },
+  dateRange: { start: string | null; end: string | null },
+  clients: string[],
+  models: string[]
+): TokenContributionData | null {
+  if (contributions.length === 0) return null;
+
+  const maxCost = Math.max(...contributions.map((c) => c.totals.cost), 0);
+  const yearMap = new Map<string, { totalTokens: number; totalCost: number; start: string; end: string }>();
+
+  for (const day of contributions) {
+    const year = day.date.split("-")[0];
+    const existing = yearMap.get(year);
+    if (existing) {
+      existing.totalTokens += day.totals.tokens;
+      existing.totalCost += day.totals.cost;
+      if (day.date < existing.start) existing.start = day.date;
+      if (day.date > existing.end) existing.end = day.date;
+    } else {
+      yearMap.set(year, {
+        totalTokens: day.totals.tokens,
+        totalCost: day.totals.cost,
+        start: day.date,
+        end: day.date,
+      });
+    }
+  }
+
+  const years = Array.from(yearMap.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([year, yearStats]) => ({
+      year,
+      totalTokens: yearStats.totalTokens,
+      totalCost: yearStats.totalCost,
+      range: { start: yearStats.start, end: yearStats.end },
+    }));
+
+  return {
+    meta: {
+      generatedAt: new Date().toISOString(),
+      version: "1.0.0",
+      dateRange: {
+        start: dateRange.start || contributions[0]?.date || "",
+        end: dateRange.end || contributions[contributions.length - 1]?.date || "",
+      },
+    },
+    summary: {
+      totalTokens: stats.totalTokens,
+      totalCost: stats.totalCost,
+      totalDays: contributions.length,
+      activeDays: stats.activeDays,
+      averagePerDay: stats.activeDays > 0 ? stats.totalCost / stats.activeDays : 0,
+      maxCostInSingleDay: maxCost,
+      clients: clients as ClientType[],
+      models,
+    },
+    years,
+    contributions,
+  };
+}
+
+export default function ProfilePageClient({
+  initialData,
+  initialSources,
+}: ProfilePageClientProps) {
   const [activeTab, setActiveTab] = useState<ProfileTab>("activity");
+  const [selectedSourceKey, setSelectedSourceKey] = useState<string | null>(
+    initialSources[0] ? getSourceKey(initialSources[0].sourceId) : null
+  );
   const data = initialData;
 
-  const graphData: TokenContributionData | null = useMemo(() => {
-    if (!data || data.contributions.length === 0) return null;
-
-    const contributions = data.contributions;
-    const totalCost = data.stats.totalCost;
-    const totalTokens = data.stats.totalTokens;
-    const maxCost = Math.max(...contributions.map((c) => c.totals.cost), 0);
-
-    const yearMap = new Map<string, { totalTokens: number; totalCost: number; start: string; end: string }>();
-    for (const day of contributions) {
-      const year = day.date.split("-")[0];
-      const existing = yearMap.get(year);
-      if (existing) {
-        existing.totalTokens += day.totals.tokens;
-        existing.totalCost += day.totals.cost;
-        if (day.date < existing.start) existing.start = day.date;
-        if (day.date > existing.end) existing.end = day.date;
-      } else {
-        yearMap.set(year, {
-          totalTokens: day.totals.tokens,
-          totalCost: day.totals.cost,
-          start: day.date,
-          end: day.date,
-        });
-      }
-    }
-
-    const years = Array.from(yearMap.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([year, stats]) => ({
-        year,
-        totalTokens: stats.totalTokens,
-        totalCost: stats.totalCost,
-        range: { start: stats.start, end: stats.end },
-      }));
-
-    return {
-      meta: {
-        generatedAt: new Date().toISOString(),
-        version: "1.0.0",
-        dateRange: {
-          start: data.dateRange.start || contributions[0]?.date || "",
-          end: data.dateRange.end || contributions[contributions.length - 1]?.date || "",
+  const graphData = useMemo(
+    () =>
+      buildGraphData(
+        data.contributions,
+        {
+          totalTokens: data.stats.totalTokens,
+          totalCost: data.stats.totalCost,
+          activeDays: data.stats.activeDays,
         },
-      },
-      summary: {
-        totalTokens,
-        totalCost,
-        totalDays: contributions.length,
-        activeDays: data.stats.activeDays,
-        averagePerDay: data.stats.activeDays > 0 ? totalCost / data.stats.activeDays : 0,
-        maxCostInSingleDay: maxCost,
-        clients: data.clients as ClientType[],
-        models: data.models,
-      },
-      years,
-      contributions: contributions as DailyContribution[],
-    };
-  }, [data]);
+        data.dateRange,
+        data.clients,
+        data.models
+      ),
+    [data]
+  );
 
   const user: ProfileUser = useMemo(() => ({
     username: data.user.username,
@@ -138,6 +197,32 @@ export default function ProfilePageClient({ initialData, username }: ProfilePage
 
 const EARLY_ADOPTERS = ["code-yeongyu", "gtg7784", "qodot"];
   const showResubmitBanner = EARLY_ADOPTERS.includes(data.user.username) && data.stats.submissionCount === 1;
+
+  const selectedSource = useMemo(() => {
+    if (initialSources.length === 0) return null;
+    return (
+      initialSources.find((source) => getSourceKey(source.sourceId) === selectedSourceKey)
+      ?? initialSources[0]
+    );
+  }, [initialSources, selectedSourceKey]);
+
+  const selectedSourceGraphData = useMemo(
+    () =>
+      selectedSource
+        ? buildGraphData(
+            selectedSource.contributions,
+            {
+              totalTokens: selectedSource.stats.totalTokens,
+              totalCost: selectedSource.stats.totalCost,
+              activeDays: selectedSource.stats.activeDays,
+            },
+            selectedSource.dateRange,
+            selectedSource.clients,
+            selectedSource.models
+          )
+        : null,
+    [selectedSource]
+  );
 
   return (
     <PageContainer style={{ backgroundColor: "#10121C" }}>
@@ -181,6 +266,87 @@ const EARLY_ADOPTERS = ["code-yeongyu", "gtg7784", "qodot"];
           )}
           {activeTab === "breakdown" && <TokenBreakdown stats={stats} />}
           {activeTab === "models" && <ProfileModels models={data.models} modelUsage={data.modelUsage} />}
+          {activeTab === "sources" && (
+            initialSources.length > 0 ? (
+              <SourcesSection>
+                <SourcesGrid>
+                  {initialSources.map((source) => {
+                    const isSelected = selectedSource
+                      ? getSourceKey(source.sourceId) === getSourceKey(selectedSource.sourceId)
+                      : false;
+
+                    return (
+                      <SourceCard
+                        key={getSourceKey(source.sourceId)}
+                        $selected={isSelected}
+                        onClick={() => setSelectedSourceKey(getSourceKey(source.sourceId))}
+                        type="button"
+                      >
+                        <SourceCardHeader>
+                          <SourceCardTitle>{source.sourceName}</SourceCardTitle>
+                          <SourceCardUpdated>
+                            {source.updatedAt
+                              ? new Date(source.updatedAt).toLocaleDateString()
+                              : "No updates"}
+                          </SourceCardUpdated>
+                        </SourceCardHeader>
+                        <SourceCardValue>{formatNumber(source.stats.totalTokens)}</SourceCardValue>
+                        <SourceCardSubValue>{formatCurrency(source.stats.totalCost)}</SourceCardSubValue>
+                        <SourceCardMeta>
+                          <span>{source.stats.submissionCount} submits</span>
+                          <span>{source.stats.activeDays} active days</span>
+                        </SourceCardMeta>
+                      </SourceCard>
+                    );
+                  })}
+                </SourcesGrid>
+
+                {selectedSource && (
+                  <SelectedSourceSection>
+                    <SelectedSourceHeader>
+                      <SelectedSourceTitle>{selectedSource.sourceName}</SelectedSourceTitle>
+                      <SelectedSourceSubtitle>
+                        {selectedSource.sourceId ?? "legacy"} ·{" "}
+                        {selectedSource.updatedAt
+                          ? `Updated ${new Date(selectedSource.updatedAt).toLocaleString()}`
+                          : "No updates yet"}
+                      </SelectedSourceSubtitle>
+                    </SelectedSourceHeader>
+
+                    <SourceTagRow>
+                      {selectedSource.clients.map((client) => (
+                        <SourceTag key={`client-${client}`}>{client}</SourceTag>
+                      ))}
+                      {selectedSource.models.slice(0, 8).map((model) => (
+                        <SourceTag key={`model-${model}`}>{model}</SourceTag>
+                      ))}
+                    </SourceTagRow>
+
+                    {selectedSourceGraphData ? (
+                      <ActivitySection>
+                        <ProfileActivity data={selectedSourceGraphData} />
+                        <ProfileStats
+                          stats={selectedSource.stats}
+                          favoriteModel={
+                            selectedSource.modelUsage?.reduce((max, current) =>
+                              current.cost > max.cost ? current : max,
+                            selectedSource.modelUsage[0])?.model
+                          }
+                        />
+                        <TokenBreakdown stats={selectedSource.stats} />
+                        <ProfileModels
+                          models={selectedSource.models}
+                          modelUsage={selectedSource.modelUsage}
+                        />
+                      </ActivitySection>
+                    ) : (
+                      <ProfileEmptyActivity />
+                    )}
+                  </SelectedSourceSection>
+                )}
+              </SourcesSection>
+            ) : <ProfileEmptyActivity />
+          )}
         </ContentWrapper>
       </MainContent>
 
@@ -266,4 +432,114 @@ const ActivitySection = styled.div`
   display: flex;
   flex-direction: column;
   gap: 24px;
+`;
+
+const SourcesSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+`;
+
+const SourcesGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+`;
+
+const SourceCard = styled.button<{ $selected: boolean }>`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: 16px;
+  border: 1px solid;
+  padding: 16px;
+  text-align: left;
+  cursor: pointer;
+  background-color: ${({ $selected }) =>
+    $selected ? "var(--color-bg-active)" : "var(--color-bg-elevated)"};
+  border-color: ${({ $selected }) =>
+    $selected ? "var(--color-fg-default)" : "var(--color-border-default)"};
+  transition: transform 120ms ease, border-color 120ms ease;
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+`;
+
+const SourceCardHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+`;
+
+const SourceCardTitle = styled.span`
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-fg-default);
+`;
+
+const SourceCardUpdated = styled.span`
+  font-size: 0.75rem;
+  color: var(--color-fg-muted);
+`;
+
+const SourceCardValue = styled.span`
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: var(--color-fg-default);
+`;
+
+const SourceCardSubValue = styled.span`
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-fg-muted);
+`;
+
+const SourceCardMeta = styled.div`
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--color-fg-muted);
+`;
+
+const SelectedSourceSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+`;
+
+const SelectedSourceHeader = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+`;
+
+const SelectedSourceTitle = styled.h2`
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--color-fg-default);
+`;
+
+const SelectedSourceSubtitle = styled.p`
+  font-size: 0.875rem;
+  color: var(--color-fg-muted);
+  word-break: break-word;
+`;
+
+const SourceTagRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
+
+const SourceTag = styled.span`
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-default);
+  background-color: var(--color-bg-elevated);
+  color: var(--color-fg-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
 `;

@@ -22,6 +22,22 @@ async function getProfileData(username: string) {
   return res.json();
 }
 
+async function getSourceData(username: string) {
+  const baseUrl = process.env.NEXT_PUBLIC_URL
+    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+    || 'http://127.0.0.1:3000';
+
+  const res = await fetch(`${baseUrl}/api/users/${username}/sources`, {
+    next: { revalidate: 60 },
+  });
+
+  if (!res.ok) {
+    return { sources: [] };
+  }
+
+  return res.json();
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ username: string }> }): Promise<Metadata> {
   const { username } = await params;
   return {
@@ -52,11 +68,19 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
 
 export default async function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
-  const data = await getProfileData(username);
+  const [data, sourceData] = await Promise.all([
+    getProfileData(username),
+    getSourceData(username),
+  ]);
   
   if (!data) {
     notFound();
   }
   
-  return <ProfilePageClient initialData={data} username={username} />;
+  return (
+    <ProfilePageClient
+      initialData={data}
+      initialSources={sourceData?.sources ?? []}
+    />
+  );
 }
