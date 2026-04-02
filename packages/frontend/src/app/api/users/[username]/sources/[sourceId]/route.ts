@@ -1,22 +1,25 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db, dailyBreakdown, submissions, users } from "@/lib/db";
 import {
+  aggregateModelUsage,
   createAccumulator,
-  normalizeClientId,
+  decodeSourceParam,
+  mergeSourceContribution,
   sourceKey,
   toIsoString,
-} from "./shared";
+} from "../shared";
 
 export const revalidate = 60;
 
 interface RouteParams {
-  params: Promise<{ username: string }>;
+  params: Promise<{ username: string; sourceId: string }>;
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
   try {
-    const { username } = await params;
+    const { username, sourceId: sourceIdParam } = await params;
+    const resolvedSourceId = decodeSourceParam(sourceIdParam);
 
     const [user] = await db
       .select({
@@ -36,7 +39,11 @@ export async function GET(_request: Request, { params }: RouteParams) {
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-    const [submissionRows, activeDayRows] = await Promise.all([
+    const sourceWhere = resolvedSourceId === null
+      ? and(eq(submissions.userId, user.id), isNull(submissions.sourceId))
+      : and(eq(submissions.userId, user.id), eq(submissions.sourceId, resolvedSourceId));
+
+    const [submissionRows, dailyRows] = await Promise.all([
       db
         .select({
           id: submissions.id,
@@ -57,36 +64,40 @@ export async function GET(_request: Request, { params }: RouteParams) {
           updatedAt: submissions.updatedAt,
         })
         .from(submissions)
-        .where(eq(submissions.userId, user.id))
+        .where(sourceWhere)
         .orderBy(desc(submissions.updatedAt), desc(submissions.id)),
+
       db
         .select({
-          sourceId: submissions.sourceId,
-          activeDays: sql<number>`COUNT(DISTINCT CASE WHEN ${dailyBreakdown.tokens} > 0 THEN ${dailyBreakdown.date} END)::int`,
+          date: dailyBreakdown.date,
+          timestampMs: dailyBreakdown.timestampMs,
+          tokens: dailyBreakdown.tokens,
+          cost: dailyBreakdown.cost,
+          inputTokens: dailyBreakdown.inputTokens,
+          outputTokens: dailyBreakdown.outputTokens,
+          sourceBreakdown: dailyBreakdown.sourceBreakdown,
         })
         .from(dailyBreakdown)
         .innerJoin(submissions, eq(dailyBreakdown.submissionId, submissions.id))
         .where(
           and(
-            eq(submissions.userId, user.id),
+            sourceWhere,
             gte(dailyBreakdown.date, oneYearAgo.toISOString().split("T")[0])
           )
         )
-        .groupBy(submissions.sourceId),
+        .orderBy(desc(dailyBreakdown.date)),
     ]);
 
-    const bySource = new Map<string, ReturnType<typeof createAccumulator>>();
-    const activeDaysBySource = new Map(
-      activeDayRows.map((row) => [sourceKey(row.sourceId), Number(row.activeDays) || 0])
+    if (submissionRows.length === 0) {
+      return NextResponse.json({ error: "Source not found" }, { status: 404 });
+    }
+
+    const source = createAccumulator(
+      submissionRows[0].sourceId,
+      submissionRows[0].sourceName
     );
 
     for (const row of submissionRows) {
-      const key = sourceKey(row.sourceId);
-      if (!bySource.has(key)) {
-        bySource.set(key, createAccumulator(row.sourceId, row.sourceName));
-      }
-
-      const source = bySource.get(key)!;
       const normalizedUpdatedAt = toIsoString(row.updatedAt);
 
       source.totalTokens += Number(row.totalTokens) || 0;
@@ -114,7 +125,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
       }
 
       for (const client of row.sourcesUsed || []) {
-        source.clients.add(normalizeClientId(client));
+        source.clients.add(client === "kilocode" ? "kilo" : client);
       }
 
       for (const model of row.modelsUsed || []) {
@@ -122,8 +133,80 @@ export async function GET(_request: Request, { params }: RouteParams) {
       }
     }
 
-    const sources = Array.from(bySource.values())
-      .map((source) => ({
+    for (const row of dailyRows) {
+      mergeSourceContribution(source, row);
+    }
+
+    const contributions = Array.from(source.contributions.values())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((day) => {
+        let dayCacheRead = 0;
+        let dayCacheWrite = 0;
+        let dayReasoning = 0;
+
+        for (const clientData of Object.values(day.clients)) {
+          dayCacheRead += clientData.cacheRead || 0;
+          dayCacheWrite += clientData.cacheWrite || 0;
+          dayReasoning += clientData.reasoning || 0;
+        }
+
+        return {
+          date: day.date,
+          timestampMs: day.timestampMs,
+          totals: {
+            tokens: day.tokens,
+            cost: day.cost,
+            messages: 0,
+          },
+          intensity: 0 as 0 | 1 | 2 | 3 | 4,
+          tokenBreakdown: {
+            input: day.inputTokens,
+            output: day.outputTokens,
+            cacheRead: dayCacheRead,
+            cacheWrite: dayCacheWrite,
+            reasoning: dayReasoning,
+          },
+          clients: Object.entries(day.clients).map(([client, breakdown]) => ({
+            client,
+            modelId: breakdown.modelId || "",
+            models: breakdown.models || {},
+            tokens: {
+              input: breakdown.input || 0,
+              output: breakdown.output || 0,
+              cacheRead: breakdown.cacheRead || 0,
+              cacheWrite: breakdown.cacheWrite || 0,
+              reasoning: breakdown.reasoning || 0,
+            },
+            cost: breakdown.cost || 0,
+            messages: breakdown.messages || 0,
+          })),
+        };
+      });
+
+    const maxCost = Math.max(...contributions.map((c) => c.totals.cost), 0);
+    const normalizedContributions = contributions.map((day) => {
+      const cost = day.totals.cost;
+      const intensity =
+        maxCost === 0
+          ? 0
+          : cost === 0
+          ? 0
+          : cost <= maxCost * 0.25
+          ? 1
+          : cost <= maxCost * 0.5
+          ? 2
+          : cost <= maxCost * 0.75
+          ? 3
+          : 4;
+      return {
+        ...day,
+        intensity: intensity as 0 | 1 | 2 | 3 | 4,
+      };
+    });
+
+    return NextResponse.json({
+      user,
+      source: {
         sourceId: source.sourceId,
         sourceKey: sourceKey(source.sourceId),
         sourceName: source.sourceName,
@@ -136,7 +219,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
           cacheWriteTokens: source.cacheWriteTokens,
           reasoningTokens: source.reasoningTokens,
           submissionCount: source.submissionCount,
-          activeDays: activeDaysBySource.get(sourceKey(source.sourceId)) ?? 0,
+          activeDays: normalizedContributions.filter((day) => day.totals.tokens > 0).length,
         },
         dateRange: {
           start: source.dateStart,
@@ -145,17 +228,14 @@ export async function GET(_request: Request, { params }: RouteParams) {
         updatedAt: source.updatedAt,
         clients: Array.from(source.clients).sort(),
         models: Array.from(source.models).sort(),
-      }))
-      .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
-
-    return NextResponse.json({
-      user,
-      sources,
+        modelUsage: aggregateModelUsage(source),
+        contributions: normalizedContributions,
+      },
     });
   } catch (error) {
-    console.error("User sources summary error:", error);
+    console.error("User source detail error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch user sources" },
+      { error: "Failed to fetch user source" },
       { status: 500 }
     );
   }

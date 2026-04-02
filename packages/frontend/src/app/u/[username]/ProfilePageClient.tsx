@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
 import { Navigation } from "@/components/layout/Navigation";
 import { Footer } from "@/components/layout/Footer";
@@ -52,11 +52,14 @@ interface ProfileData {
 
 interface ProfilePageClientProps {
   initialData: ProfileData;
-  initialSources: SourceData[];
+  initialSources: SourceSummaryData[];
+  initialSelectedSource: SourceDetailData | null;
+  username: string;
 }
 
-interface SourceData {
+interface SourceSummaryData {
   sourceId: string | null;
+  sourceKey: string;
   sourceName: string;
   stats: {
     totalTokens: number;
@@ -76,12 +79,11 @@ interface SourceData {
   updatedAt: string | null;
   clients: string[];
   models: string[];
-  modelUsage?: ModelUsage[];
-  contributions: DailyContribution[];
 }
 
-function getSourceKey(sourceId: string | null): string {
-  return sourceId ?? "__legacy__";
+interface SourceDetailData extends SourceSummaryData {
+  modelUsage?: ModelUsage[];
+  contributions: DailyContribution[];
 }
 
 function buildGraphData(
@@ -154,10 +156,18 @@ function buildGraphData(
 export default function ProfilePageClient({
   initialData,
   initialSources,
+  initialSelectedSource,
+  username,
 }: ProfilePageClientProps) {
   const [activeTab, setActiveTab] = useState<ProfileTab>("activity");
   const [selectedSourceKey, setSelectedSourceKey] = useState<string | null>(
-    initialSources[0] ? getSourceKey(initialSources[0].sourceId) : null
+    initialSources[0]?.sourceKey ?? null
+  );
+  const [loadingSourceKey, setLoadingSourceKey] = useState<string | null>(
+    initialSelectedSource ? null : (initialSources[0]?.sourceKey ?? null)
+  );
+  const [sourceDetailCache, setSourceDetailCache] = useState<Record<string, SourceDetailData>>(
+    initialSelectedSource ? { [initialSelectedSource.sourceKey]: initialSelectedSource } : {}
   );
   const data = initialData;
 
@@ -195,16 +205,58 @@ export default function ProfilePageClient({
     submissionCount: data.stats.submissionCount,
   }), [data]);
 
-const EARLY_ADOPTERS = ["code-yeongyu", "gtg7784", "qodot"];
+  const EARLY_ADOPTERS = ["code-yeongyu", "gtg7784", "qodot"];
   const showResubmitBanner = EARLY_ADOPTERS.includes(data.user.username) && data.stats.submissionCount === 1;
 
-  const selectedSource = useMemo(() => {
+  const selectedSourceSummary = useMemo(() => {
     if (initialSources.length === 0) return null;
     return (
-      initialSources.find((source) => getSourceKey(source.sourceId) === selectedSourceKey)
+      initialSources.find((source) => source.sourceKey === selectedSourceKey)
       ?? initialSources[0]
     );
   }, [initialSources, selectedSourceKey]);
+
+  const selectedSource = useMemo(
+    () => (selectedSourceKey ? sourceDetailCache[selectedSourceKey] ?? null : null),
+    [selectedSourceKey, sourceDetailCache]
+  );
+
+  useEffect(() => {
+    if (!selectedSourceKey || sourceDetailCache[selectedSourceKey]) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch(`/api/users/${username}/sources/${encodeURIComponent(selectedSourceKey)}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to fetch source detail: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((payload) => {
+        if (cancelled || !payload?.source) return;
+        setSourceDetailCache((current) => ({
+          ...current,
+          [selectedSourceKey]: payload.source as SourceDetailData,
+        }));
+      })
+      .catch((error) => {
+        console.error(error);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingSourceKey((current) =>
+            current === selectedSourceKey ? null : current
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSourceKey, sourceDetailCache, username]);
 
   const selectedSourceGraphData = useMemo(
     () =>
@@ -271,15 +323,18 @@ const EARLY_ADOPTERS = ["code-yeongyu", "gtg7784", "qodot"];
               <SourcesSection>
                 <SourcesGrid>
                   {initialSources.map((source) => {
-                    const isSelected = selectedSource
-                      ? getSourceKey(source.sourceId) === getSourceKey(selectedSource.sourceId)
-                      : false;
+                    const isSelected = source.sourceKey === selectedSourceKey;
 
                     return (
                       <SourceCard
-                        key={getSourceKey(source.sourceId)}
+                        key={source.sourceKey}
                         $selected={isSelected}
-                        onClick={() => setSelectedSourceKey(getSourceKey(source.sourceId))}
+                        onClick={() => {
+                          setSelectedSourceKey(source.sourceKey);
+                          setLoadingSourceKey(
+                            sourceDetailCache[source.sourceKey] ? null : source.sourceKey
+                          );
+                        }}
                         type="button"
                       >
                         <SourceCardHeader>
@@ -301,28 +356,32 @@ const EARLY_ADOPTERS = ["code-yeongyu", "gtg7784", "qodot"];
                   })}
                 </SourcesGrid>
 
-                {selectedSource && (
+                {selectedSourceSummary && (
                   <SelectedSourceSection>
                     <SelectedSourceHeader>
-                      <SelectedSourceTitle>{selectedSource.sourceName}</SelectedSourceTitle>
+                      <SelectedSourceTitle>{selectedSourceSummary.sourceName}</SelectedSourceTitle>
                       <SelectedSourceSubtitle>
-                        {selectedSource.sourceId ?? "legacy"} ·{" "}
-                        {selectedSource.updatedAt
-                          ? `Updated ${new Date(selectedSource.updatedAt).toLocaleString()}`
+                        {selectedSourceSummary.sourceId ?? "legacy"} ·{" "}
+                        {selectedSourceSummary.updatedAt
+                          ? `Updated ${new Date(selectedSourceSummary.updatedAt).toLocaleString()}`
                           : "No updates yet"}
                       </SelectedSourceSubtitle>
                     </SelectedSourceHeader>
 
                     <SourceTagRow>
-                      {selectedSource.clients.map((client) => (
+                      {selectedSourceSummary.clients.map((client) => (
                         <SourceTag key={`client-${client}`}>{client}</SourceTag>
                       ))}
-                      {selectedSource.models.slice(0, 8).map((model) => (
+                      {selectedSourceSummary.models.slice(0, 8).map((model) => (
                         <SourceTag key={`model-${model}`}>{model}</SourceTag>
                       ))}
                     </SourceTagRow>
 
-                    {selectedSourceGraphData ? (
+                    {loadingSourceKey === selectedSourceKey && !selectedSource ? (
+                      <SourceLoadingCard>
+                        Loading source details…
+                      </SourceLoadingCard>
+                    ) : selectedSourceGraphData && selectedSource ? (
                       <ActivitySection>
                         <ProfileActivity data={selectedSourceGraphData} />
                         <ProfileStats
@@ -541,5 +600,15 @@ const SourceTag = styled.span`
   background-color: var(--color-bg-elevated);
   color: var(--color-fg-muted);
   font-size: 0.8rem;
+  font-weight: 600;
+`;
+
+const SourceLoadingCard = styled.div`
+  border-radius: 16px;
+  border: 1px solid var(--color-border-default);
+  background-color: var(--color-bg-elevated);
+  color: var(--color-fg-muted);
+  padding: 20px;
+  font-size: 0.95rem;
   font-weight: 600;
 `;

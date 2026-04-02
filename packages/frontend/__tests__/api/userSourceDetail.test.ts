@@ -52,7 +52,6 @@ const mockState = vi.hoisted(() => {
         where: vi.fn(() => builder),
         innerJoin: vi.fn(() => builder),
         orderBy: vi.fn(() => builder),
-        groupBy: vi.fn(() => builder),
         limit: vi.fn(() => builder),
         then: (resolve: (value: unknown) => unknown) => resolve(nextSelectResult()),
       };
@@ -65,7 +64,7 @@ const mockState = vi.hoisted(() => {
   const and = vi.fn(() => "and");
   const gte = vi.fn(() => "gte");
   const desc = vi.fn(() => "desc");
-  const sql = vi.fn(() => "sql");
+  const isNull = vi.fn(() => "isNull");
 
   return {
     db,
@@ -74,7 +73,7 @@ const mockState = vi.hoisted(() => {
     and,
     gte,
     desc,
-    sql,
+    isNull,
     reset() {
       selectResults.length = 0;
       db.select.mockClear();
@@ -82,7 +81,7 @@ const mockState = vi.hoisted(() => {
       and.mockClear();
       gte.mockClear();
       desc.mockClear();
-      sql.mockClear();
+      isNull.mockClear();
     },
     pushSelectResult(rows: Array<Record<string, unknown>>) {
       selectResults.push(rows);
@@ -102,15 +101,15 @@ vi.mock("drizzle-orm", () => ({
   and: mockState.and,
   gte: mockState.gte,
   desc: mockState.desc,
-  sql: mockState.sql,
+  isNull: mockState.isNull,
 }));
 
-type ModuleExports = typeof import("../../src/app/api/users/[username]/sources/route");
+type ModuleExports = typeof import("../../src/app/api/users/[username]/sources/[sourceId]/route");
 
 let GET: ModuleExports["GET"];
 
 beforeAll(async () => {
-  const routeModule = await import("../../src/app/api/users/[username]/sources/route");
+  const routeModule = await import("../../src/app/api/users/[username]/sources/[sourceId]/route");
   GET = routeModule.GET;
 });
 
@@ -118,8 +117,8 @@ beforeEach(() => {
   mockState.reset();
 });
 
-describe("GET /api/users/[username]/sources", () => {
-  it("aggregates sources and preserves a legacy null source", async () => {
+describe("GET /api/users/[username]/sources/[sourceId]", () => {
+  it("returns a detailed view for a concrete source", async () => {
     mockState.pushSelectResult([
       {
         id: "user-1",
@@ -143,50 +142,54 @@ describe("GET /api/users/[username]/sources", () => {
         submitCount: 2,
         dateStart: "2026-03-01",
         dateEnd: "2026-03-02",
-        sourcesUsed: ["claude", "kilocode"],
-        modelsUsed: ["claude-sonnet-4", "gpt-4.1"],
+        sourcesUsed: ["claude"],
+        modelsUsed: ["claude-sonnet-4"],
         updatedAt: new Date("2026-03-02T10:00:00.000Z"),
-      },
-      {
-        id: "submission-2",
-        sourceId: null,
-        sourceName: null,
-        totalTokens: 300,
-        totalCost: "3.2500",
-        inputTokens: 200,
-        outputTokens: 100,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        reasoningTokens: 0,
-        submitCount: 1,
-        dateStart: "2026-03-01",
-        dateEnd: "2026-03-01",
-        sourcesUsed: ["cursor"],
-        modelsUsed: ["gpt-4.1"],
-        updatedAt: new Date("2026-03-01T09:00:00.000Z"),
       },
     ]);
     mockState.pushSelectResult([
       {
-        sourceId: "machine-a",
-        activeDays: 1,
-      },
-      {
-        sourceId: null,
-        activeDays: 1,
+        date: "2026-03-01",
+        timestampMs: 1700000000000,
+        tokens: 1000,
+        cost: "10.5000",
+        inputTokens: 600,
+        outputTokens: 400,
+        sourceBreakdown: {
+          claude: {
+            tokens: 1000,
+            cost: 10.5,
+            input: 600,
+            output: 400,
+            cacheRead: 100,
+            cacheWrite: 20,
+            reasoning: 10,
+            messages: 4,
+            models: {
+              "claude-sonnet-4": {
+                tokens: 1000,
+                cost: 10.5,
+                input: 600,
+                output: 400,
+                cacheRead: 100,
+                cacheWrite: 20,
+                reasoning: 10,
+                messages: 4,
+              },
+            },
+          },
+        },
       },
     ]);
 
     const response = await GET(
-      new Request("http://localhost:3000/api/users/alice/sources"),
-      { params: Promise.resolve({ username: "alice" }) }
+      new Request("http://localhost:3000/api/users/alice/sources/machine-a"),
+      { params: Promise.resolve({ username: "alice", sourceId: "machine-a" }) }
     );
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.sources).toHaveLength(2);
-
-    expect(body.sources[0]).toMatchObject({
+    expect(body.source).toMatchObject({
       sourceId: "machine-a",
       sourceKey: "machine-a",
       sourceName: "Work MacBook",
@@ -196,34 +199,52 @@ describe("GET /api/users/[username]/sources", () => {
         submissionCount: 2,
         activeDays: 1,
       },
-      clients: ["claude", "kilo"],
-      models: ["claude-sonnet-4", "gpt-4.1"],
+      clients: ["claude"],
+      models: ["claude-sonnet-4"],
     });
-
-    expect(body.sources[1]).toMatchObject({
-      sourceId: null,
-      sourceKey: "__legacy__",
-      sourceName: "Legacy / Unknown device",
-      stats: {
-        totalTokens: 300,
-        totalCost: 3.25,
-        submissionCount: 1,
-        activeDays: 1,
-      },
-      clients: ["cursor"],
-      models: ["gpt-4.1"],
-    });
+    expect(body.source.contributions).toHaveLength(1);
   });
 
-  it("returns 404 when the user does not exist", async () => {
+  it("maps __legacy__ to null source rows", async () => {
+    mockState.pushSelectResult([
+      {
+        id: "user-1",
+        username: "alice",
+        displayName: "Alice",
+        avatarUrl: null,
+      },
+    ]);
+    mockState.pushSelectResult([
+      {
+        id: "submission-legacy",
+        sourceId: null,
+        sourceName: null,
+        totalTokens: 50,
+        totalCost: "0.5000",
+        inputTokens: 30,
+        outputTokens: 20,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        reasoningTokens: 0,
+        submitCount: 1,
+        dateStart: "2026-03-01",
+        dateEnd: "2026-03-01",
+        sourcesUsed: ["cursor"],
+        modelsUsed: ["gpt-4.1"],
+        updatedAt: new Date("2026-03-01T10:00:00.000Z"),
+      },
+    ]);
     mockState.pushSelectResult([]);
 
     const response = await GET(
-      new Request("http://localhost:3000/api/users/missing/sources"),
-      { params: Promise.resolve({ username: "missing" }) }
+      new Request("http://localhost:3000/api/users/alice/sources/__legacy__"),
+      { params: Promise.resolve({ username: "alice", sourceId: "__legacy__" }) }
     );
+    const body = await response.json();
 
-    expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({ error: "User not found" });
+    expect(response.status).toBe(200);
+    expect(body.source.sourceId).toBeNull();
+    expect(body.source.sourceKey).toBe("__legacy__");
+    expect(body.source.sourceName).toBe("Legacy / Unknown device");
   });
 });
