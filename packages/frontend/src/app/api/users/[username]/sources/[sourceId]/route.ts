@@ -6,6 +6,7 @@ import {
   createAccumulator,
   decodeSourceParam,
   mergeSourceContribution,
+  normalizeClientId,
   sourceKey,
   toIsoString,
 } from "../shared";
@@ -125,7 +126,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
       }
 
       for (const client of row.sourcesUsed || []) {
-        source.clients.add(client === "kilocode" ? "kilo" : client);
+        source.clients.add(normalizeClientId(client));
       }
 
       for (const model of row.modelsUsed || []) {

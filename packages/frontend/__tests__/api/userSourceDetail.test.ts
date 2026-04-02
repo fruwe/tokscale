@@ -191,7 +191,7 @@ describe("GET /api/users/[username]/sources/[sourceId]", () => {
     expect(response.status).toBe(200);
     expect(body.source).toMatchObject({
       sourceId: "machine-a",
-      sourceKey: "machine-a",
+      sourceKey: "source:machine-a",
       sourceName: "Work MacBook",
       stats: {
         totalTokens: 1000,
@@ -246,5 +246,48 @@ describe("GET /api/users/[username]/sources/[sourceId]", () => {
     expect(body.source.sourceId).toBeNull();
     expect(body.source.sourceKey).toBe("__legacy__");
     expect(body.source.sourceName).toBe("Legacy / Unknown device");
+  });
+
+  it("treats a real __legacy__ sourceId as an addressable source, not the unsourced sentinel", async () => {
+    mockState.pushSelectResult([
+      {
+        id: "user-1",
+        username: "alice",
+        displayName: "Alice",
+        avatarUrl: null,
+      },
+    ]);
+    mockState.pushSelectResult([
+      {
+        id: "submission-legacy-string",
+        sourceId: "__legacy__",
+        sourceName: "Literal __legacy__ device",
+        totalTokens: 75,
+        totalCost: "0.7500",
+        inputTokens: 50,
+        outputTokens: 25,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        reasoningTokens: 0,
+        submitCount: 1,
+        dateStart: "2026-03-01",
+        dateEnd: "2026-03-01",
+        sourcesUsed: ["claude"],
+        modelsUsed: ["claude-sonnet-4"],
+        updatedAt: new Date("2026-03-01T10:00:00.000Z"),
+      },
+    ]);
+    mockState.pushSelectResult([]);
+
+    const response = await GET(
+      new Request("http://localhost:3000/api/users/alice/sources/source%3A__legacy__"),
+      { params: Promise.resolve({ username: "alice", sourceId: "source:__legacy__" }) }
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.source.sourceId).toBe("__legacy__");
+    expect(body.source.sourceKey).toBe("source:__legacy__");
+    expect(body.source.sourceName).toBe("Literal __legacy__ device");
   });
 });

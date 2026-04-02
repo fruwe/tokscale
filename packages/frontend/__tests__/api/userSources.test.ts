@@ -188,7 +188,7 @@ describe("GET /api/users/[username]/sources", () => {
 
     expect(body.sources[0]).toMatchObject({
       sourceId: "machine-a",
-      sourceKey: "machine-a",
+      sourceKey: "source:machine-a",
       sourceName: "Work MacBook",
       stats: {
         totalTokens: 1000,

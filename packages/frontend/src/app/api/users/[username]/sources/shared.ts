@@ -1,4 +1,5 @@
 export const LEGACY_SOURCE_PARAM = "__legacy__";
+const SOURCE_KEY_PREFIX = "source:";
 
 export type ModelData = {
   tokens: number;
@@ -61,11 +62,21 @@ export function normalizeClientId(id: string): string {
 }
 
 export function sourceKey(sourceId: string | null): string {
-  return sourceId ?? LEGACY_SOURCE_PARAM;
+  return sourceId == null
+    ? LEGACY_SOURCE_PARAM
+    : `${SOURCE_KEY_PREFIX}${encodeURIComponent(sourceId)}`;
 }
 
 export function decodeSourceParam(sourceIdOrLegacy: string): string | null {
-  return sourceIdOrLegacy === LEGACY_SOURCE_PARAM ? null : decodeURIComponent(sourceIdOrLegacy);
+  if (sourceIdOrLegacy === LEGACY_SOURCE_PARAM) {
+    return null;
+  }
+
+  if (!sourceIdOrLegacy.startsWith(SOURCE_KEY_PREFIX)) {
+    return decodeURIComponent(sourceIdOrLegacy);
+  }
+
+  return decodeURIComponent(sourceIdOrLegacy.slice(SOURCE_KEY_PREFIX.length));
 }
 
 export function toIsoString(value: Date | string | null | undefined): string | null {
