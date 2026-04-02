@@ -54,6 +54,25 @@ async function getSourceDetail(username: string, sourceKey: string) {
   return res.json();
 }
 
+async function getSourceSummary(username: string, sourceKey: string) {
+  const baseUrl = process.env.NEXT_PUBLIC_URL
+    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+    || 'http://127.0.0.1:3000';
+
+  const res = await fetch(
+    `${baseUrl}/api/users/${username}/sources/${encodeURIComponent(sourceKey)}/summary`,
+    {
+      next: { revalidate: 60 },
+    }
+  );
+
+  if (!res.ok) {
+    return { source: null };
+  }
+
+  return res.json();
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ username: string }> }): Promise<Metadata> {
   const { username } = await params;
   return {
@@ -94,15 +113,19 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
   }
 
   const initialSourceKey = sourceData?.sources?.[0]?.sourceKey;
-  const sourceDetailData = initialSourceKey
-    ? await getSourceDetail(username, initialSourceKey)
-    : { source: null };
+  const [sourceDetailData, sourceSummaryData] = initialSourceKey
+    ? await Promise.all([
+        getSourceDetail(username, initialSourceKey),
+        getSourceSummary(username, initialSourceKey),
+      ])
+    : [{ source: null }, { source: null }];
   
   return (
     <ProfilePageClient
       initialData={data}
       initialSources={sourceData?.sources ?? []}
       initialSelectedSource={sourceDetailData?.source ?? null}
+      initialSelectedSourceSummary={sourceSummaryData?.source ?? null}
       username={username}
     />
   );

@@ -54,6 +54,7 @@ interface ProfilePageClientProps {
   initialData: ProfileData;
   initialSources: SourceSummaryData[];
   initialSelectedSource: SourceDetailData | null;
+  initialSelectedSourceSummary: SourcePreviewSummary | null;
   username: string;
 }
 
@@ -84,6 +85,23 @@ interface SourceSummaryData {
 interface SourceDetailData extends SourceSummaryData {
   modelUsage?: ModelUsage[];
   contributions: DailyContribution[];
+}
+
+interface SourcePreviewSummary {
+  sourceId: string | null;
+  sourceKey: string;
+  sourceName: string;
+  totalTokens: number;
+  totalCost: number;
+  submissionCount: number;
+  activeDays: number;
+  updatedAt: string | null;
+  dateRange: {
+    start: string | null;
+    end: string | null;
+  };
+  topClient: string | null;
+  topModel: string | null;
 }
 
 function buildGraphData(
@@ -157,6 +175,7 @@ export default function ProfilePageClient({
   initialData,
   initialSources,
   initialSelectedSource,
+  initialSelectedSourceSummary,
   username,
 }: ProfilePageClientProps) {
   const [activeTab, setActiveTab] = useState<ProfileTab>("activity");
@@ -168,6 +187,11 @@ export default function ProfilePageClient({
   );
   const [sourceDetailCache, setSourceDetailCache] = useState<Record<string, SourceDetailData>>(
     initialSelectedSource ? { [initialSelectedSource.sourceKey]: initialSelectedSource } : {}
+  );
+  const [sourceSummaryCache, setSourceSummaryCache] = useState<Record<string, SourcePreviewSummary>>(
+    initialSelectedSourceSummary
+      ? { [initialSelectedSourceSummary.sourceKey]: initialSelectedSourceSummary }
+      : {}
   );
   const data = initialData;
 
@@ -221,6 +245,11 @@ export default function ProfilePageClient({
     [selectedSourceKey, sourceDetailCache]
   );
 
+  const selectedSourcePreview = useMemo(
+    () => (selectedSourceKey ? sourceSummaryCache[selectedSourceKey] ?? null : null),
+    [selectedSourceKey, sourceSummaryCache]
+  );
+
   useEffect(() => {
     if (!selectedSourceKey || sourceDetailCache[selectedSourceKey]) {
       return;
@@ -257,6 +286,36 @@ export default function ProfilePageClient({
       cancelled = true;
     };
   }, [selectedSourceKey, sourceDetailCache, username]);
+
+  useEffect(() => {
+    if (!selectedSourceKey || sourceSummaryCache[selectedSourceKey]) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch(`/api/users/${username}/sources/${encodeURIComponent(selectedSourceKey)}/summary`)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to fetch source summary: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((payload) => {
+        if (cancelled || !payload?.source) return;
+        setSourceSummaryCache((current) => ({
+          ...current,
+          [selectedSourceKey]: payload.source as SourcePreviewSummary,
+        }));
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSourceKey, sourceSummaryCache, username]);
 
   const selectedSourceGraphData = useMemo(
     () =>
@@ -376,6 +435,45 @@ export default function ProfilePageClient({
                         <SourceTag key={`model-${model}`}>{model}</SourceTag>
                       ))}
                     </SourceTagRow>
+
+                    {selectedSourcePreview && (
+                      <SourcePreviewCard>
+                        <SourcePreviewHeader>
+                          <SourcePreviewTitle>Quick Preview</SourcePreviewTitle>
+                          <SourcePreviewUpdated>
+                            {selectedSourcePreview.updatedAt
+                              ? new Date(selectedSourcePreview.updatedAt).toLocaleDateString()
+                              : "No updates"}
+                          </SourcePreviewUpdated>
+                        </SourcePreviewHeader>
+                        <SourcePreviewGrid>
+                          <SourcePreviewItem>
+                            <SourcePreviewLabel>Top client</SourcePreviewLabel>
+                            <SourcePreviewValue>
+                              {selectedSourcePreview.topClient ?? "—"}
+                            </SourcePreviewValue>
+                          </SourcePreviewItem>
+                          <SourcePreviewItem>
+                            <SourcePreviewLabel>Top model</SourcePreviewLabel>
+                            <SourcePreviewValue>
+                              {selectedSourcePreview.topModel ?? "—"}
+                            </SourcePreviewValue>
+                          </SourcePreviewItem>
+                          <SourcePreviewItem>
+                            <SourcePreviewLabel>Submissions</SourcePreviewLabel>
+                            <SourcePreviewValue>
+                              {selectedSourcePreview.submissionCount}
+                            </SourcePreviewValue>
+                          </SourcePreviewItem>
+                          <SourcePreviewItem>
+                            <SourcePreviewLabel>Active days</SourcePreviewLabel>
+                            <SourcePreviewValue>
+                              {selectedSourcePreview.activeDays}
+                            </SourcePreviewValue>
+                          </SourcePreviewItem>
+                        </SourcePreviewGrid>
+                      </SourcePreviewCard>
+                    )}
 
                     {loadingSourceKey === selectedSourceKey && !selectedSource ? (
                       <SourceLoadingCard>
@@ -601,6 +699,59 @@ const SourceTag = styled.span`
   color: var(--color-fg-muted);
   font-size: 0.8rem;
   font-weight: 600;
+`;
+
+const SourcePreviewCard = styled.div`
+  border-radius: 16px;
+  border: 1px solid var(--color-border-default);
+  background-color: var(--color-bg-elevated);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const SourcePreviewHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+`;
+
+const SourcePreviewTitle = styled.h3`
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--color-fg-default);
+`;
+
+const SourcePreviewUpdated = styled.span`
+  font-size: 0.75rem;
+  color: var(--color-fg-muted);
+`;
+
+const SourcePreviewGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+`;
+
+const SourcePreviewItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+`;
+
+const SourcePreviewLabel = styled.span`
+  font-size: 0.75rem;
+  color: var(--color-fg-muted);
+  font-weight: 600;
+`;
+
+const SourcePreviewValue = styled.span`
+  font-size: 0.95rem;
+  color: var(--color-fg-default);
+  font-weight: 700;
+  word-break: break-word;
 `;
 
 const SourceLoadingCard = styled.div`
