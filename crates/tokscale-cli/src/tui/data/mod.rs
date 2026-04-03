@@ -508,18 +508,15 @@ impl DataLoader {
 
             // Hourly aggregation: derive hour from timestamp (Unix ms)
             if let Some(hour_dt) = timestamp_to_hour(msg.timestamp) {
-                let hourly_entry =
-                    hourly_map
-                        .entry(hour_dt)
-                        .or_insert_with(|| HourlyUsage {
-                            datetime: hour_dt,
-                            tokens: TokenBreakdown::default(),
-                            cost: 0.0,
-                            clients: BTreeSet::new(),
-                            models: BTreeMap::new(),
-                            message_count: 0,
-                            turn_count: 0,
-                        });
+                let hourly_entry = hourly_map.entry(hour_dt).or_insert_with(|| HourlyUsage {
+                    datetime: hour_dt,
+                    tokens: TokenBreakdown::default(),
+                    cost: 0.0,
+                    clients: BTreeSet::new(),
+                    models: BTreeMap::new(),
+                    message_count: 0,
+                    turn_count: 0,
+                });
 
                 hourly_entry.tokens.input = hourly_entry
                     .tokens
@@ -784,7 +781,6 @@ pub struct PeriodBucket {
     pub label: &'static str,
     pub hour_range: &'static str,
     pub total_tokens: u64,
-    pub total_cost: f64,
 }
 
 /// Weekday bucket for profile view
@@ -792,7 +788,6 @@ pub struct PeriodBucket {
 pub struct WeekdayBucket {
     pub day: &'static str,
     pub total_tokens: u64,
-    pub total_cost: f64,
 }
 
 /// Aggregate hourly data into time-of-day periods
@@ -808,13 +803,11 @@ pub fn aggregate_by_period(hourly: &[HourlyUsage]) -> Vec<PeriodBucket> {
         .iter()
         .map(|(label, hour_range, hours)| {
             let mut total_tokens = 0u64;
-            let mut total_cost = 0.0;
 
             for entry in hourly {
                 let hour = entry.datetime.hour() as usize;
                 if hours.contains(&hour) {
                     total_tokens = total_tokens.saturating_add(entry.tokens.total());
-                    total_cost += entry.cost;
                 }
             }
 
@@ -822,7 +815,6 @@ pub fn aggregate_by_period(hourly: &[HourlyUsage]) -> Vec<PeriodBucket> {
                 label,
                 hour_range,
                 total_tokens,
-                total_cost,
             }
         })
         .collect()
@@ -841,12 +833,11 @@ pub fn aggregate_by_weekday(hourly: &[HourlyUsage]) -> Vec<WeekdayBucket> {
         "Saturday",
         "Sunday",
     ];
-    let mut buckets: Vec<(u64, f64)> = vec![(0, 0.0); 7];
+    let mut buckets: Vec<u64> = vec![0; 7];
 
     for entry in hourly {
         let weekday = entry.datetime.weekday().num_days_from_monday() as usize;
-        buckets[weekday].0 = buckets[weekday].0.saturating_add(entry.tokens.total());
-        buckets[weekday].1 += entry.cost;
+        buckets[weekday] = buckets[weekday].saturating_add(entry.tokens.total());
     }
 
     weekdays
@@ -854,8 +845,7 @@ pub fn aggregate_by_weekday(hourly: &[HourlyUsage]) -> Vec<WeekdayBucket> {
         .enumerate()
         .map(|(i, day)| WeekdayBucket {
             day,
-            total_tokens: buckets[i].0,
-            total_cost: buckets[i].1,
+            total_tokens: buckets[i],
         })
         .collect()
 }
