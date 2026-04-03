@@ -306,6 +306,8 @@ enum Commands {
         kilo: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
+        #[arg(long, help = "Show only Crush usage")]
+        crush: bool,
         #[arg(long, help = "Show only Synthetic usage")]
         synthetic: bool,
         #[arg(long, help = "Show only today's usage")]
@@ -817,7 +819,7 @@ fn main() -> Result<()> {
         }
         Some(Commands::Hourly {
             json,
-            light,
+            light: _,
             opencode,
             claude,
             codex,
@@ -833,6 +835,7 @@ fn main() -> Result<()> {
             kilocode,
             kilo,
             mux,
+            crush,
             synthetic,
             today,
             week,
@@ -859,12 +862,12 @@ fn main() -> Result<()> {
                 kilocode,
                 kilo,
                 mux,
+                crush,
                 synthetic,
             });
             let (since, until) = build_date_filter(today, week, month, since, until);
             let year = normalize_year_filter(today, week, month, year);
             run_hourly_report(
-                json || light,
                 json,
                 clients,
                 since,
@@ -2392,7 +2395,6 @@ fn run_monthly_report(
 }
 
 fn run_hourly_report(
-    _light_or_json: bool,
     json: bool,
     clients: Option<Vec<String>>,
     since: Option<String>,
@@ -2421,6 +2423,7 @@ fn run_hourly_report(
         .block_on(async {
             get_hourly_report(ReportOptions {
                 home_dir: None,
+                use_env_roots: true,
                 clients,
                 since,
                 until,
