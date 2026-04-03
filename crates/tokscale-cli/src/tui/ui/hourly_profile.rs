@@ -32,14 +32,15 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let total_tokens = app.data.total_tokens;
     let total_cost = app.data.total_cost;
 
-    // Calculate dynamic bar width based on available space
-    let bar_width = if inner.width > 100 {
-        30
-    } else if inner.width > 80 {
-        24
-    } else {
-        18
-    };
+    // Calculate dynamic bar width to use most of the available width
+    // Period line: label (10) + hour_range (12) + spaces (4) + percentage (8) = 34 chars overhead
+    // Weekday line: day name (10) + spaces (3) + percentage (8) = 21 chars overhead
+    // Use period overhead since it's larger, then subtract a margin for safety
+    let overhead = 36; // 34 + small margin
+    let bar_width = (inner.width as usize)
+        .saturating_sub(overhead)
+        .max(20)
+        .min(80);
 
     // Get date range
     let first_date = hourly.first().map(|h| h.datetime.date());
