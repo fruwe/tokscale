@@ -106,6 +106,13 @@ pub enum SortField {
     Date,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HourlyViewMode {
+    #[default]
+    Table,
+    Profile,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortDirection {
     Ascending,
@@ -167,6 +174,8 @@ pub struct App {
     pub dialog_stack: DialogStack,
 
     pub dialog_needs_reload: Rc<RefCell<bool>>,
+
+    pub hourly_view_mode: HourlyViewMode,
 }
 
 impl App {
@@ -252,6 +261,7 @@ impl App {
             needs_reload: false,
             dialog_stack,
             dialog_needs_reload,
+            hourly_view_mode: HourlyViewMode::default(),
         })
     }
 
@@ -402,6 +412,15 @@ impl App {
                         ChartGranularity::Daily => ChartGranularity::Hourly,
                         ChartGranularity::Hourly => ChartGranularity::Daily,
                     };
+                }
+            }
+            KeyCode::Char('v') => {
+                if self.current_tab == Tab::Hourly {
+                    self.hourly_view_mode = match self.hourly_view_mode {
+                        HourlyViewMode::Table => HourlyViewMode::Profile,
+                        HourlyViewMode::Profile => HourlyViewMode::Table,
+                    };
+                    self.reset_selection();
                 }
             }
             KeyCode::Char('g') => {
@@ -1957,5 +1976,43 @@ mod tests {
 
         app.terminal_width = 60;
         assert!(!app.is_very_narrow());
+    }
+
+    // ── HourlyViewMode tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_hourly_view_mode_default() {
+        let mode = HourlyViewMode::default();
+        assert_eq!(mode, HourlyViewMode::Table);
+    }
+
+    #[test]
+    fn test_hourly_view_mode_toggle() {
+        let mut app = make_app();
+        assert_eq!(app.hourly_view_mode, HourlyViewMode::Table);
+
+        // Toggle to Profile when on Hourly tab
+        app.current_tab = Tab::Hourly;
+        app.handle_key_event(key(KeyCode::Char('v')));
+        assert_eq!(app.hourly_view_mode, HourlyViewMode::Profile);
+
+        // Toggle back to Table
+        app.handle_key_event(key(KeyCode::Char('v')));
+        assert_eq!(app.hourly_view_mode, HourlyViewMode::Table);
+    }
+
+    #[test]
+    fn test_hourly_view_mode_no_toggle_on_other_tabs() {
+        let mut app = make_app();
+        assert_eq!(app.hourly_view_mode, HourlyViewMode::Table);
+
+        // 'v' should not toggle when not on Hourly tab
+        app.current_tab = Tab::Overview;
+        app.handle_key_event(key(KeyCode::Char('v')));
+        assert_eq!(app.hourly_view_mode, HourlyViewMode::Table);
+
+        app.current_tab = Tab::Daily;
+        app.handle_key_event(key(KeyCode::Char('v')));
+        assert_eq!(app.hourly_view_mode, HourlyViewMode::Table);
     }
 }
