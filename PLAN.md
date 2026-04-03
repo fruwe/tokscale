@@ -45,6 +45,11 @@ Assess the issues identified by cubic on PR #395, fix the valid ones with minima
     - P4: Fixed by removing unused parameter and ignoring `--light` flag
     - Pre-existing: Fixed missing `crush` and `use_env_roots` in Hourly command
 
+- [ ] P6 Push branch updates and reply on PR #395 with the outcome summary
+  - Acceptance: The branch is pushed to origin and the PR has a reply that attributes cubic as the source of the reviewed findings, summarizing fixes and non-actionable findings.
+  - Validation: `git push origin feat/hourly-profile-view` and `gh pr comment 395 --repo junhoyeo/tokscale --body-file <file>`
+  - Evidence: remote push success output and posted PR comment URL.
+
 ## Decisions
 
 - Initial assessment: cubic's TUI cache schema warning appears to be a false positive because the JSON cache uses `#[serde(default)]` for newly added fields.
@@ -52,6 +57,7 @@ Assess the issues identified by cubic on PR #395, fix the valid ones with minima
 - Prefer the smallest user-visible fix for the Hourly profile summary and the smallest safe compatibility fix for cached `UnifiedMessage` entries.
 - If `--light` has no distinct behavior for Hourly, prefer aligning the command surface with implemented behavior over adding broader new behavior.
 - **Implemented**: `--light` for Hourly is now a no-op (ignored), maintaining backward compatibility while removing misleading behavior.
+- Follow-up delivery will reply directly on the PR, explicitly crediting cubic for the original findings being assessed.
 
 ## Risks and Rollback
 
