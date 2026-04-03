@@ -41,6 +41,7 @@ pub struct UnifiedMessage {
     pub dedup_key: Option<String>,
     /// True if this message is the first assistant response after a user turn.
     /// Used to count user interaction turns (as opposed to API message count).
+    #[serde(default)]
     pub is_turn_start: bool,
 }
 
