@@ -32,6 +32,15 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let total_tokens = app.data.total_tokens;
     let total_cost = app.data.total_cost;
 
+    // Calculate dynamic bar width based on available space
+    let bar_width = if inner.width > 100 {
+        30
+    } else if inner.width > 80 {
+        24
+    } else {
+        18
+    };
+
     // Get date range
     let first_date = hourly.first().map(|h| h.datetime.date());
     let last_date = hourly.last().map(|h| h.datetime.date());
@@ -50,7 +59,12 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     // Title line
     lines.push(Line::from(vec![
-        Span::styled("Hourly Profile", Style::default().fg(app.theme.accent).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Hourly Profile",
+            Style::default()
+                .fg(app.theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled("  ", Style::default()),
         Span::styled(&date_range, Style::default().fg(app.theme.muted)),
     ]));
@@ -58,19 +72,126 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     // Summary line
     let summary_spans = vec![
-        Span::styled(format!("{} days", hourly.len()), Style::default().fg(Color::Cyan)),
+        Span::styled(
+            format!("{} days", hourly.len()),
+            Style::default().fg(Color::Cyan),
+        ),
         Span::styled("  |  ", Style::default().fg(app.theme.muted)),
-        Span::styled(format!("{} total tokens", format_tokens(total_tokens)), Style::default().fg(Color::Cyan)),
+        Span::styled(
+            format!("{} total tokens", format_tokens(total_tokens)),
+            Style::default().fg(Color::Cyan),
+        ),
         Span::styled("  |  ", Style::default().fg(app.theme.muted)),
-        Span::styled(format!("{} total cost", format_cost(total_cost)), Style::default().fg(Color::Green)),
+        Span::styled(
+            format!("{} total cost", format_cost(total_cost)),
+            Style::default().fg(Color::Green),
+        ),
     ];
     lines.push(Line::from(summary_spans));
     lines.push(Line::from(""));
 
     // Time-of-day breakdown
-    lines.push(Line::from(vec![
-        Span::styled("When You Work Most", Style::default().fg(app.theme.accent).add_modifier(Modifier::BOLD)),
-    ]));
+    lines.push(Line::from(vec![Span::styled(
+        "When You Work Most",
+        Style::default()
+            .fg(app.theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )]));
+    lines.push(Line::from(""));
+
+    let max_period_tokens = periods.iter().map(|p| p.total_tokens).max().unwrap_or(1);
+
+    for period in &periods {
+        let percentage = if total_tokens > 0 {
+            period.total_tokens as f64 / total_tokens as f64 * 100.0
+        } else {
+            0.0
+        };
+        let bar_filled = if max_period_tokens > 0 {
+            (period.total_tokens as f64 / max_period_tokens as f64 * bar_width as f64).round()
+                as usize
+        } else {
+            0
+        };
+        let bar_filled = bar_filled.min(bar_width);
+        let bar_empty = bar_width - bar_filled;
+
+        let bar = format!("{}{}", "█".repeat(bar_filled), "░".repeat(bar_empty));
+
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {:<10}", period.label),
+                Style::default().fg(app.theme.foreground),
+            ),
+            Span::styled(
+                format!("{:>12}", period.hour_range),
+                Style::default().fg(app.theme.muted),
+            ),
+            Span::styled("  ", Style::default()),
+            Span::styled(bar, Style::default().fg(Color::Green)),
+            Span::styled("  ", Style::default()),
+            Span::styled(
+                format!("{:>5.1}%", percentage),
+                Style::default().fg(Color::Yellow),
+            ),
+        ]));
+    }
+    lines.push(Line::from(""));
+
+    // Weekday breakdown
+    lines.push(Line::from(vec![Span::styled(
+        "Most Productive Day",
+        Style::default()
+            .fg(app.theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )]));
+    lines.push(Line::from(""));
+
+    let max_weekday_tokens = weekdays.iter().map(|w| w.total_tokens).max().unwrap_or(1);
+
+    // Find best weekday
+    let best_weekday = weekdays
+        .iter()
+        .max_by_key(|w| w.total_tokens)
+        .map(|w| w.day)
+        .unwrap_or("Monday");
+
+    for weekday in &weekdays {
+        let percentage = if total_tokens > 0 {
+            weekday.total_tokens as f64 / total_tokens as f64 * 100.0
+        } else {
+            0.0
+        };
+        let bar_filled = if max_weekday_tokens > 0 {
+            (weekday.total_tokens as f64 / max_weekday_tokens as f64 * bar_width as f64).round()
+                as usize
+        } else {
+            0
+        };
+        let bar_filled = bar_filled.min(bar_width);
+        let bar_empty = bar_width - bar_filled;
+
+        let bar = format!("{}{}", "█".repeat(bar_filled), "░".repeat(bar_empty));
+
+        let is_best = weekday.day == best_weekday;
+
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {:<10}", weekday.day),
+                Style::default().fg(if is_best {
+                    Color::Yellow
+                } else {
+                    app.theme.foreground
+                }),
+            ),
+            Span::styled(bar, Style::default().fg(Color::Green)),
+            Span::styled("  ", Style::default()),
+            Span::styled(
+                format!("{:>5.1}%", percentage),
+                Style::default().fg(Color::Yellow),
+            ),
+        ]));
+    }
     lines.push(Line::from(""));
 
     let max_period_tokens = periods.iter().map(|p| p.total_tokens).max().unwrap_or(1);
@@ -83,34 +204,43 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
             0.0
         };
         let bar_filled = if max_period_tokens > 0 {
-            (period.total_tokens as f64 / max_period_tokens as f64 * bar_width as f64).round() as usize
+            (period.total_tokens as f64 / max_period_tokens as f64 * bar_width as f64).round()
+                as usize
         } else {
             0
         };
         let bar_filled = bar_filled.min(bar_width);
         let bar_empty = bar_width - bar_filled;
 
-        let bar = format!(
-            "{}{}",
-            "█".repeat(bar_filled),
-            "░".repeat(bar_empty)
-        );
+        let bar = format!("{}{}", "█".repeat(bar_filled), "░".repeat(bar_empty));
 
         lines.push(Line::from(vec![
-            Span::styled(format!("  {:<10}", period.label), Style::default().fg(app.theme.foreground)),
-            Span::styled(format!("{:>12}", period.hour_range), Style::default().fg(app.theme.muted)),
+            Span::styled(
+                format!("  {:<10}", period.label),
+                Style::default().fg(app.theme.foreground),
+            ),
+            Span::styled(
+                format!("{:>12}", period.hour_range),
+                Style::default().fg(app.theme.muted),
+            ),
             Span::styled("  ", Style::default()),
             Span::styled(bar, Style::default().fg(Color::Green)),
             Span::styled("  ", Style::default()),
-            Span::styled(format!("{:>5.1}%", percentage), Style::default().fg(Color::Yellow)),
+            Span::styled(
+                format!("{:>5.1}%", percentage),
+                Style::default().fg(Color::Yellow),
+            ),
         ]));
     }
     lines.push(Line::from(""));
 
     // Weekday breakdown
-    lines.push(Line::from(vec![
-        Span::styled("Most Productive Day", Style::default().fg(app.theme.accent).add_modifier(Modifier::BOLD)),
-    ]));
+    lines.push(Line::from(vec![Span::styled(
+        "Most Productive Day",
+        Style::default()
+            .fg(app.theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )]));
     lines.push(Line::from(""));
 
     let max_weekday_tokens = weekdays.iter().map(|w| w.total_tokens).max().unwrap_or(1);
@@ -130,26 +260,33 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
             0.0
         };
         let bar_filled = if max_weekday_tokens > 0 {
-            (weekday.total_tokens as f64 / max_weekday_tokens as f64 * weekday_bar_width as f64).round() as usize
+            (weekday.total_tokens as f64 / max_weekday_tokens as f64 * weekday_bar_width as f64)
+                .round() as usize
         } else {
             0
         };
         let bar_filled = bar_filled.min(weekday_bar_width);
         let bar_empty = weekday_bar_width - bar_filled;
 
-        let bar = format!(
-            "{}{}",
-            "█".repeat(bar_filled),
-            "░".repeat(bar_empty)
-        );
+        let bar = format!("{}{}", "█".repeat(bar_filled), "░".repeat(bar_empty));
 
         let is_best = weekday.day == best_weekday;
 
         lines.push(Line::from(vec![
-            Span::styled(format!("  {:<10}", weekday.day), Style::default().fg(if is_best { Color::Yellow } else { app.theme.foreground })),
+            Span::styled(
+                format!("  {:<10}", weekday.day),
+                Style::default().fg(if is_best {
+                    Color::Yellow
+                } else {
+                    app.theme.foreground
+                }),
+            ),
             Span::styled(bar, Style::default().fg(Color::Green)),
             Span::styled("  ", Style::default()),
-            Span::styled(format!("{:>5.1}%", percentage), Style::default().fg(Color::Yellow)),
+            Span::styled(
+                format!("{:>5.1}%", percentage),
+                Style::default().fg(Color::Yellow),
+            ),
         ]));
     }
     lines.push(Line::from(""));
@@ -157,8 +294,16 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     // Peak hour insight
     if let Some((hour, tokens, cost)) = peak_hour {
         lines.push(Line::from(vec![
-            Span::styled("Peak Hour: ", Style::default().fg(app.theme.accent).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("{:02}:00-{:02}:59", hour, hour), Style::default().fg(Color::Yellow)),
+            Span::styled(
+                "Peak Hour: ",
+                Style::default()
+                    .fg(app.theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{:02}:00-{:02}:59", hour, hour),
+                Style::default().fg(Color::Yellow),
+            ),
             Span::styled("  (", Style::default().fg(app.theme.muted)),
             Span::styled(format_tokens(tokens), Style::default().fg(Color::Cyan)),
             Span::styled(" tokens, ", Style::default().fg(app.theme.muted)),
@@ -182,7 +327,10 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     lines.push(Line::from(vec![
         Span::styled("Press ", Style::default().fg(app.theme.muted)),
         Span::styled("[v]", Style::default().fg(Color::Yellow)),
-        Span::styled(" to switch to table view", Style::default().fg(app.theme.muted)),
+        Span::styled(
+            " to switch to table view",
+            Style::default().fg(app.theme.muted),
+        ),
     ]));
 
     let paragraph = Paragraph::new(lines).alignment(Alignment::Left);
