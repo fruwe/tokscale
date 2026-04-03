@@ -826,6 +826,7 @@ fn main() -> Result<()> {
             let year = normalize_year_filter(today, week, month, year);
             run_hourly_report(
                 json,
+                cli.home.clone(),
                 clients,
                 since,
                 until,
@@ -2329,6 +2330,7 @@ fn run_monthly_report(
 
 fn run_hourly_report(
     json: bool,
+    home_dir: Option<String>,
     clients: Option<Vec<String>>,
     since: Option<String>,
     until: Option<String>,
@@ -2350,13 +2352,14 @@ fn run_hourly_report(
     } else {
         Some(LightSpinner::start("Scanning session data..."))
     };
+    let use_env_roots = use_env_roots(&home_dir);
     let start = Instant::now();
     let rt = Runtime::new()?;
     let report = rt
         .block_on(async {
             get_hourly_report(ReportOptions {
-                home_dir: None,
-                use_env_roots: true,
+                home_dir,
+                use_env_roots,
                 clients,
                 since,
                 until,
