@@ -778,6 +778,107 @@ fn calculate_streaks_for_today(daily: &[DailyUsage], today: NaiveDate) -> (u32, 
     (current_streak, longest_streak)
 }
 
+/// Time-of-day period bucket for profile view
+#[derive(Debug, Clone)]
+pub struct PeriodBucket {
+    pub label: &'static str,
+    pub hour_range: &'static str,
+    pub total_tokens: u64,
+    pub total_cost: f64,
+}
+
+/// Weekday bucket for profile view
+#[derive(Debug, Clone)]
+pub struct WeekdayBucket {
+    pub day: &'static str,
+    pub total_tokens: u64,
+    pub total_cost: f64,
+}
+
+/// Aggregate hourly data into time-of-day periods
+pub fn aggregate_by_period(hourly: &[HourlyUsage]) -> Vec<PeriodBucket> {
+    let periods: [(&str, &str, Vec<usize>); 4] = [
+        ("Morning", "05:00-11:59", (5..=11).collect()),
+        ("Daytime", "12:00-16:59", (12..=16).collect()),
+        ("Evening", "17:00-21:59", (17..=21).collect()),
+        ("Night", "22:00-04:59", vec![22, 23, 0, 1, 2, 3, 4]),
+    ];
+
+    periods
+        .iter()
+        .map(|(label, hour_range, hours)| {
+            let mut total_tokens = 0u64;
+            let mut total_cost = 0.0;
+
+            for entry in hourly {
+                let hour = entry.datetime.hour() as usize;
+                if hours.contains(&hour) {
+                    total_tokens = total_tokens.saturating_add(entry.tokens.total());
+                    total_cost += entry.cost;
+                }
+            }
+
+            PeriodBucket {
+                label,
+                hour_range,
+                total_tokens,
+                total_cost,
+            }
+        })
+        .collect()
+}
+
+/// Aggregate hourly data by weekday
+pub fn aggregate_by_weekday(hourly: &[HourlyUsage]) -> Vec<WeekdayBucket> {
+    use chrono::Datelike;
+
+    let weekdays = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ];
+    let mut buckets: Vec<(u64, f64)> = vec![(0, 0.0); 7];
+
+    for entry in hourly {
+        let weekday = entry.datetime.weekday().num_days_from_monday() as usize;
+        buckets[weekday].0 = buckets[weekday].0.saturating_add(entry.tokens.total());
+        buckets[weekday].1 += entry.cost;
+    }
+
+    weekdays
+        .iter()
+        .enumerate()
+        .map(|(i, day)| WeekdayBucket {
+            day,
+            total_tokens: buckets[i].0,
+            total_cost: buckets[i].1,
+        })
+        .collect()
+}
+
+/// Find peak hour across all hourly data
+pub fn find_peak_hour(hourly: &[HourlyUsage]) -> Option<(u32, u64, f64)> {
+    use std::collections::HashMap;
+
+    let mut hour_totals: HashMap<u32, (u64, f64)> = HashMap::new();
+
+    for entry in hourly {
+        let hour = entry.datetime.hour();
+        let entry_totals = hour_totals.entry(hour).or_insert((0, 0.0));
+        entry_totals.0 = entry_totals.0.saturating_add(entry.tokens.total());
+        entry_totals.1 += entry.cost;
+    }
+
+    hour_totals
+        .into_iter()
+        .max_by_key(|(_, (tokens, _))| *tokens)
+        .map(|(hour, (tokens, cost))| (hour, tokens, cost))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -4,10 +4,18 @@ use ratatui::widgets::{
     Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
 };
 
+use super::hourly_profile;
 use super::widgets::{format_cache_hit_rate, format_cost, format_tokens};
-use crate::tui::app::{App, SortDirection, SortField};
+use crate::tui::app::{App, HourlyViewMode, SortDirection, SortField};
 
 pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
+    match app.hourly_view_mode {
+        HourlyViewMode::Table => render_table(frame, app, area),
+        HourlyViewMode::Profile => hourly_profile::render(frame, app, area),
+    }
+}
+
+fn render_table(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(app.theme.border))

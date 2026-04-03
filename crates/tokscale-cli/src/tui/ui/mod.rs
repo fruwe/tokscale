@@ -3,6 +3,7 @@ mod bar_chart;
 mod daily;
 pub mod dialog;
 mod hourly;
+mod hourly_profile;
 mod footer;
 mod header;
 mod models;
