@@ -74,7 +74,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     // Summary line
     let summary_spans = vec![
         Span::styled(
-            format!("{} days", hourly.len()),
+            format!("{} hours", hourly.len()),
             Style::default().fg(Color::Cyan),
         ),
         Span::styled("  |  ", Style::default().fg(app.theme.muted)),
