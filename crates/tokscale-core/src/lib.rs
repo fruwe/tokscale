@@ -3682,6 +3682,7 @@ mod tests {
             year: None,
             scanner_settings: scanner::ScannerSettings {
                 opencode_db_paths: vec![external_db.clone()],
+                ..Default::default()
             },
         })
         .unwrap();
@@ -3760,6 +3761,7 @@ mod tests {
             year: None,
             scanner_settings: scanner::ScannerSettings {
                 opencode_db_paths: vec![external_db.clone()],
+                ..Default::default()
             },
         })
         .unwrap();
