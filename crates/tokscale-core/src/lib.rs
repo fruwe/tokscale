@@ -170,7 +170,7 @@ impl std::fmt::Debug for ParsedMessages {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LocalParseOptions {
     pub home_dir: Option<String>,
     pub use_env_roots: bool,
@@ -178,6 +178,9 @@ pub struct LocalParseOptions {
     pub since: Option<String>,
     pub until: Option<String>,
     pub year: Option<String>,
+    /// Persistent scanner config loaded from `~/.config/tokscale/settings.json`.
+    /// Defaults to empty when callers don't care about user-configured paths.
+    pub scanner_settings: scanner::ScannerSettings,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -244,7 +247,7 @@ pub struct GraphResult {
     pub contributions: Vec<DailyContribution>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ReportOptions {
     pub home_dir: Option<String>,
     pub use_env_roots: bool,
@@ -253,6 +256,9 @@ pub struct ReportOptions {
     pub until: Option<String>,
     pub year: Option<String>,
     pub group_by: GroupBy,
+    /// Persistent scanner config loaded from `~/.config/tokscale/settings.json`.
+    /// Defaults to empty when callers don't care about user-configured paths.
+    pub scanner_settings: scanner::ScannerSettings,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -322,7 +328,13 @@ fn parse_all_messages_with_pricing(
     clients: &[String],
     pricing: Option<&pricing::PricingService>,
 ) -> Vec<UnifiedMessage> {
-    parse_all_messages_with_pricing_with_env_strategy(home_dir, clients, pricing, true)
+    parse_all_messages_with_pricing_with_env_strategy(
+        home_dir,
+        clients,
+        pricing,
+        true,
+        &scanner::ScannerSettings::default(),
+    )
 }
 
 fn parse_all_messages_with_pricing_with_env_strategy(
@@ -330,6 +342,7 @@ fn parse_all_messages_with_pricing_with_env_strategy(
     clients: &[String],
     pricing: Option<&pricing::PricingService>,
     use_env_roots: bool,
+    scanner_settings: &scanner::ScannerSettings,
 ) -> Vec<UnifiedMessage> {
     #[derive(Debug)]
     struct CachedParseOutcome {
@@ -609,7 +622,12 @@ fn parse_all_messages_with_pricing_with_env_strategy(
         parse_full_log_source(path, pricing, is_headless)
     }
 
-    let scan_result = scanner::scan_all_clients_with_env_strategy(home_dir, clients, use_env_roots);
+    let scan_result = scanner::scan_all_clients_with_scanner_settings(
+        home_dir,
+        clients,
+        use_env_roots,
+        scanner_settings,
+    );
     let headless_roots = scanner::headless_roots_with_env_strategy(home_dir, use_env_roots);
     let mut source_cache = message_cache::SourceMessageCache::load();
     source_cache.prune_missing_files();
@@ -1113,6 +1131,7 @@ pub async fn get_model_report(options: ReportOptions) -> Result<ModelReport, Str
         &clients,
         pricing.as_deref(),
         options.use_env_roots,
+        &options.scanner_settings,
     );
 
     let filtered = filter_messages_for_report(all_messages, &options);
@@ -1168,6 +1187,7 @@ pub async fn get_monthly_report(options: ReportOptions) -> Result<MonthlyReport,
         &clients,
         pricing.as_deref(),
         options.use_env_roots,
+        &options.scanner_settings,
     );
 
     let filtered = filter_messages_for_report(all_messages, &options);
@@ -1241,6 +1261,7 @@ async fn generate_graph_with_loaded_pricing(
         &clients,
         pricing,
         options.use_env_roots,
+        &options.scanner_settings,
     );
 
     let filtered = filter_messages_for_report(all_messages, &options);
@@ -1378,6 +1399,7 @@ fn parse_local_unified_messages_resolved(
         clients,
         pricing,
         options.use_env_roots,
+        &options.scanner_settings,
     );
     Ok(filter_unified_messages(messages, &options))
 }
@@ -1397,8 +1419,12 @@ pub fn parse_local_clients(options: LocalParseOptions) -> Result<ParsedMessages,
     let include_all = clients.is_empty();
     let include_synthetic = include_all || clients.iter().any(|c| c == "synthetic");
 
-    let scan_result =
-        scanner::scan_all_clients_with_env_strategy(&home_dir, &clients, options.use_env_roots);
+    let scan_result = scanner::scan_all_clients_with_scanner_settings(
+        &home_dir,
+        &clients,
+        options.use_env_roots,
+        &options.scanner_settings,
+    );
     let headless_roots =
         scanner::headless_roots_with_env_strategy(&home_dir, options.use_env_roots);
 
@@ -1811,9 +1837,9 @@ mod tests {
     use super::{
         aggregate_model_usage_entries, apply_pricing_if_available, message_cache,
         normalize_model_for_grouping, parse_all_messages_with_pricing, parse_local_clients,
-        parsed_to_unified, pricing, retain_for_requested_clients, select_local_parse_pricing,
-        unified_to_parsed, ClientId, GroupBy, LocalParseOptions, TokenBreakdown, UnifiedMessage,
-        UNKNOWN_WORKSPACE_LABEL,
+        parsed_to_unified, pricing, retain_for_requested_clients, scanner,
+        select_local_parse_pricing, unified_to_parsed, ClientId, GroupBy, LocalParseOptions,
+        TokenBreakdown, UnifiedMessage, UNKNOWN_WORKSPACE_LABEL,
     };
     use std::collections::{HashMap, HashSet};
     use std::io::Write;
@@ -3346,6 +3372,7 @@ mod tests {
             since: None,
             until: None,
             year: None,
+            scanner_settings: scanner::ScannerSettings::default(),
         })
         .unwrap();
 
@@ -3406,6 +3433,7 @@ mod tests {
             since: None,
             until: None,
             year: None,
+            scanner_settings: scanner::ScannerSettings::default(),
         })
         .unwrap();
 
@@ -3417,5 +3445,176 @@ mod tests {
         assert_eq!(parsed.messages[0].client, "opencode");
         assert_eq!(parsed.messages[0].model_id, "deepseek-v3-0324");
         assert_eq!(parsed.messages[0].provider_id, "fireworks");
+    }
+
+    #[test]
+    fn test_parse_local_clients_honors_scanner_settings_opencode_db_paths() {
+        // Regression guard: `parse_local_clients` used to call
+        // `scan_all_clients_with_env_strategy`, which silently dropped
+        // `options.scanner_settings`. Users with
+        // `scanner.opencodeDbPaths` pointing at an OPENCODE_DB outside the
+        // XDG data dir would see no rows through the clients/wrapped
+        // command paths even though model/monthly/graph reports honored
+        // the same config.
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        // Deliberately do not create ~/.local/share/opencode so nothing
+        // is auto-discoverable; the only db the scanner can find must
+        // come from `scanner_settings`.
+        let outside_dir = temp_dir.path().join("elsewhere");
+        std::fs::create_dir_all(&outside_dir).unwrap();
+        let external_db = outside_dir.join("opencode.db");
+
+        let conn = rusqlite::Connection::open(&external_db).unwrap();
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             CREATE TABLE message (
+                 id TEXT PRIMARY KEY,
+                 session_id TEXT NOT NULL,
+                 data TEXT NOT NULL
+             );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO message (id, session_id, data) VALUES (?1, ?2, ?3)",
+            rusqlite::params![
+                "ext-msg-1",
+                "ext-session",
+                r#"{
+                    "role": "assistant",
+                    "modelID": "claude-sonnet-4",
+                    "providerID": "anthropic",
+                    "tokens": { "input": 42, "output": 7, "reasoning": 0, "cache": { "read": 0, "write": 0 } },
+                    "time": { "created": 1700000000000.0 }
+                }"#
+            ],
+        )
+        .unwrap();
+        drop(conn);
+
+        // Without scanner_settings: no rows (nothing auto-discoverable).
+        let parsed_default = parse_local_clients(LocalParseOptions {
+            home_dir: Some(temp_dir.path().to_str().unwrap().to_string()),
+            use_env_roots: false,
+            clients: Some(vec!["opencode".to_string()]),
+            since: None,
+            until: None,
+            year: None,
+            scanner_settings: scanner::ScannerSettings::default(),
+        })
+        .unwrap();
+        assert_eq!(parsed_default.counts.get(ClientId::OpenCode), 0);
+        assert!(parsed_default.messages.is_empty());
+
+        // With scanner_settings pointing at the external db: the user
+        // row must show up.
+        let parsed_with_settings = parse_local_clients(LocalParseOptions {
+            home_dir: Some(temp_dir.path().to_str().unwrap().to_string()),
+            use_env_roots: false,
+            clients: Some(vec!["opencode".to_string()]),
+            since: None,
+            until: None,
+            year: None,
+            scanner_settings: scanner::ScannerSettings {
+                opencode_db_paths: vec![external_db.clone()],
+            },
+        })
+        .unwrap();
+        assert_eq!(
+            parsed_with_settings.counts.get(ClientId::OpenCode),
+            1,
+            "scanner.opencodeDbPaths must reach the parse_local_clients path"
+        );
+        assert_eq!(parsed_with_settings.messages.len(), 1);
+        assert_eq!(parsed_with_settings.messages[0].client, "opencode");
+        assert_eq!(parsed_with_settings.messages[0].model_id, "claude-sonnet-4");
+    }
+
+    #[test]
+    fn test_parse_local_clients_claude_filter_ignores_scanner_settings_opencode_db_paths() {
+        // Regression guard for the scanner client-filter bypass: even
+        // when `scanner.opencodeDbPaths` pins an external opencode db,
+        // a `--clients claude` request must NOT pull in OpenCode rows.
+        // Before the fix, the merge ran outside the OpenCode-enabled
+        // guard so user-pinned dbs leaked through both `messages` and
+        // `counts` (the latter is computed before the message-level
+        // client filter, so even the post-filter pipeline could not
+        // hide a leaked count).
+        let temp_dir = tempfile::TempDir::new().unwrap();
+
+        // Claude session: one assistant message, the only thing the
+        // filter should accept.
+        let claude_dir = temp_dir.path().join(".claude/projects/myproject");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        std::fs::write(
+            claude_dir.join("conversation.jsonl"),
+            r#"{"type":"assistant","timestamp":"2024-12-01T10:00:00.000Z","requestId":"req_001","message":{"id":"msg_001","model":"claude-3-5-sonnet","usage":{"input_tokens":100,"output_tokens":50}}}
+"#,
+        )
+        .unwrap();
+
+        // External opencode.db that the user has pinned via
+        // scanner.opencodeDbPaths. Without the fix, this would leak
+        // into the Claude-only result.
+        let outside_dir = temp_dir.path().join("elsewhere");
+        std::fs::create_dir_all(&outside_dir).unwrap();
+        let external_db = outside_dir.join("opencode.db");
+        let conn = rusqlite::Connection::open(&external_db).unwrap();
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             CREATE TABLE message (
+                 id TEXT PRIMARY KEY,
+                 session_id TEXT NOT NULL,
+                 data TEXT NOT NULL
+             );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO message (id, session_id, data) VALUES (?1, ?2, ?3)",
+            rusqlite::params![
+                "leaked-opencode",
+                "should-not-show-up",
+                r#"{
+                    "role": "assistant",
+                    "modelID": "claude-sonnet-4",
+                    "providerID": "anthropic",
+                    "tokens": { "input": 9999, "output": 9999, "reasoning": 0, "cache": { "read": 0, "write": 0 } },
+                    "time": { "created": 1700000000000.0 }
+                }"#
+            ],
+        )
+        .unwrap();
+        drop(conn);
+
+        let parsed = parse_local_clients(LocalParseOptions {
+            home_dir: Some(temp_dir.path().to_str().unwrap().to_string()),
+            use_env_roots: false,
+            clients: Some(vec!["claude".to_string()]),
+            since: None,
+            until: None,
+            year: None,
+            scanner_settings: scanner::ScannerSettings {
+                opencode_db_paths: vec![external_db.clone()],
+            },
+        })
+        .unwrap();
+
+        assert_eq!(
+            parsed.counts.get(ClientId::OpenCode),
+            0,
+            "OpenCode count must stay zero under a Claude-only filter even \
+             when scanner.opencodeDbPaths is set"
+        );
+        assert_eq!(
+            parsed.counts.get(ClientId::Claude),
+            1,
+            "Claude message must still be counted"
+        );
+        assert_eq!(parsed.messages.len(), 1);
+        assert_eq!(parsed.messages[0].client, "claude");
+        assert!(
+            parsed.messages.iter().all(|m| m.client != "opencode"),
+            "no OpenCode messages may leak into a Claude-only result, got {:?}",
+            parsed.messages
+        );
     }
 }
