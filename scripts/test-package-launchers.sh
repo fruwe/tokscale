@@ -16,12 +16,7 @@ fi
 
 BUN_BIN="${BUN_BIN:-$(command -v bun)}"
 NODE_BIN="${NODE_BIN:-$(command -v node)}"
-BUN_DIR="$(cd "$(dirname "${BUN_BIN}")" && pwd)"
-NODE_DIR="$(cd "$(dirname "${NODE_BIN}")" && pwd)"
-
-SYSTEM_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
-BUN_ONLY_PATH="${BUN_DIR}:${SYSTEM_PATH}"
-NODE_ONLY_PATH="${NODE_DIR}:${SYSTEM_PATH}"
+LDD_BIN="${LDD_BIN:-$(command -v ldd || true)}"
 
 PLATFORM_PACKAGE="$(node --input-type=module <<'NODE'
 import { execSync } from "node:child_process";
@@ -31,6 +26,18 @@ function detectLibcKind() {
     return null;
   }
 
+  const report = process.report?.getReport?.();
+  if (report?.header?.glibcVersionRuntime) {
+    return "gnu";
+  }
+
+  if (
+    Array.isArray(report?.sharedObjects) &&
+    report.sharedObjects.some((obj) => obj.toLowerCase().includes("musl"))
+  ) {
+    return "musl";
+  }
+
   try {
     const output = execSync("ldd --version", {
       encoding: "utf-8",
@@ -38,7 +45,7 @@ function detectLibcKind() {
     }).toLowerCase();
     return output.includes("musl") ? "musl" : "gnu";
   } catch {
-    return "gnu";
+    throw new Error("Unable to determine Linux libc kind for launcher smoke tests");
   }
 }
 
@@ -80,14 +87,32 @@ PLATFORM_STAGE="${TMP_ROOT}/${PLATFORM_PACKAGE}"
 INSTALL_DIR="${TMP_ROOT}/install"
 NPM_CACHE="${TMP_ROOT}/npm-cache"
 EMPTY_PATH_DIR="${TMP_ROOT}/empty-path"
+BUN_ONLY_DIR="${TMP_ROOT}/bun-only-path"
+NODE_ONLY_DIR="${TMP_ROOT}/node-only-path"
 
 cp -R packages/cli "${CLI_STAGE}"
 cp -R packages/tokscale "${WRAPPER_STAGE}"
 cp -R "packages/${PLATFORM_PACKAGE}" "${PLATFORM_STAGE}"
-mkdir -p "${PLATFORM_STAGE}/bin" "${INSTALL_DIR}" "${NPM_CACHE}" "${EMPTY_PATH_DIR}"
+mkdir -p \
+  "${PLATFORM_STAGE}/bin" \
+  "${INSTALL_DIR}" \
+  "${NPM_CACHE}" \
+  "${EMPTY_PATH_DIR}" \
+  "${BUN_ONLY_DIR}" \
+  "${NODE_ONLY_DIR}"
 cp target/release/tokscale "${PLATFORM_STAGE}/bin/tokscale"
 
 chmod +x "${CLI_STAGE}/bin.js" "${WRAPPER_STAGE}/bin.js" "${PLATFORM_STAGE}/bin/tokscale"
+
+ln -s "${BUN_BIN}" "${BUN_ONLY_DIR}/bun"
+ln -s "${NODE_BIN}" "${NODE_ONLY_DIR}/node"
+if [[ -n "${LDD_BIN}" ]]; then
+  ln -s "${LDD_BIN}" "${BUN_ONLY_DIR}/ldd"
+  ln -s "${LDD_BIN}" "${NODE_ONLY_DIR}/ldd"
+fi
+
+BUN_ONLY_PATH="${BUN_ONLY_DIR}"
+NODE_ONLY_PATH="${NODE_ONLY_DIR}"
 
 CLI_TGZ="$(cd "${CLI_STAGE}" && NPM_CONFIG_CACHE="${NPM_CACHE}" npm pack --silent)"
 WRAPPER_TGZ="$(cd "${WRAPPER_STAGE}" && NPM_CONFIG_CACHE="${NPM_CACHE}" npm pack --silent)"
