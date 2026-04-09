@@ -3,7 +3,11 @@ set -euo pipefail
 
 EXPECTED_VERSION="${1:-}"
 if [[ "${EXPECTED_VERSION}" == "--expect-version" ]]; then
-  EXPECTED_VERSION="${2:-}"
+  if [[ -z "${2:-}" ]]; then
+    echo "--expect-version requires a value" >&2
+    exit 2
+  fi
+  EXPECTED_VERSION="${2}"
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,17 +16,26 @@ cd "${ROOT_DIR}"
 python3 - <<'PY' "${EXPECTED_VERSION}"
 import json
 import pathlib
-import re
 import sys
 
 expected_version = sys.argv[1] or None
 root = pathlib.Path(".")
-cargo_toml = (root / "Cargo.toml").read_text()
-match = re.search(r"\[workspace\.package\](?:(?!^\[).|\n)*?^version = \"([^\"]+)\"", cargo_toml, re.MULTILINE)
-if not match:
-    raise SystemExit("Could not find [workspace.package] version in Cargo.toml")
 
-workspace_version = match.group(1)
+try:
+    import tomllib
+except ModuleNotFoundError:
+    tomllib = None
+
+if tomllib is None:
+    raise SystemExit("Python tomllib is required (Python 3.11+)")
+
+with (root / "Cargo.toml").open("rb") as cargo_file:
+    cargo_data = tomllib.load(cargo_file)
+
+workspace_section = cargo_data.get("workspace", {}).get("package", {})
+workspace_version = workspace_section.get("version")
+if not workspace_version:
+    raise SystemExit("Could not find [workspace.package] version in Cargo.toml")
 if expected_version and workspace_version != expected_version:
     raise SystemExit(
         f"Cargo workspace version mismatch: expected {expected_version}, found {workspace_version}"
@@ -52,8 +65,14 @@ expect_equal(
     workspace_version,
 )
 
+platform_names = set()
 for path in platform_packages:
     manifest = json.loads(path.read_text())
+    name = manifest.get("name")
+    if not name:
+        errors.append(f"{path} missing package name")
+        continue
+    platform_names.add(name)
     expect_equal(f"{path} version", manifest["version"], workspace_version)
 
 expected_optional = {
@@ -75,6 +94,19 @@ if actual_optional != expected_optional:
 
 for name, version in cli_package["optionalDependencies"].items():
     expect_equal(f"packages/cli optional dependency {name}", version, workspace_version)
+
+missing_manifests = actual_optional - platform_names
+extra_manifests = platform_names - actual_optional
+if missing_manifests:
+    errors.append(
+        "Missing platform manifests for optional dependencies: "
+        f"{sorted(missing_manifests)}"
+    )
+if extra_manifests:
+    errors.append(
+        "Platform manifests not listed in optionalDependencies: "
+        f"{sorted(extra_manifests)}"
+    )
 
 if expected_version and cli_package["version"] != expected_version:
     errors.append(
