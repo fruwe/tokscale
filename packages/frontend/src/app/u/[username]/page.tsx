@@ -23,54 +23,66 @@ async function getProfileData(username: string) {
 }
 
 async function getSourceSummaries(username: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_URL
-    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-    || 'http://127.0.0.1:3000';
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_URL
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+      || 'http://127.0.0.1:3000';
 
-  const res = await fetch(`${baseUrl}/api/users/${username}/sources`, {
-    next: { revalidate: 60 },
-  });
+    const res = await fetch(`${baseUrl}/api/users/${username}/sources`, {
+      next: { revalidate: 60 },
+    });
 
-  if (!res.ok) {
+    if (!res.ok) {
+      return { sources: [] };
+    }
+
+    return res.json();
+  } catch {
     return { sources: [] };
   }
-
-  return res.json();
 }
 
 async function getSourceDetail(username: string, sourceKey: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_URL
-    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-    || 'http://127.0.0.1:3000';
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_URL
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+      || 'http://127.0.0.1:3000';
 
-  const res = await fetch(`${baseUrl}/api/users/${username}/sources/${encodeURIComponent(sourceKey)}`, {
-    next: { revalidate: 60 },
-  });
+    const res = await fetch(`${baseUrl}/api/users/${username}/sources/${encodeURIComponent(sourceKey)}`, {
+      next: { revalidate: 60 },
+    });
 
-  if (!res.ok) {
+    if (!res.ok) {
+      return { source: null };
+    }
+
+    return res.json();
+  } catch {
     return { source: null };
   }
-
-  return res.json();
 }
 
 async function getSourceSummary(username: string, sourceKey: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_URL
-    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-    || 'http://127.0.0.1:3000';
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_URL
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+      || 'http://127.0.0.1:3000';
 
-  const res = await fetch(
-    `${baseUrl}/api/users/${username}/sources/${encodeURIComponent(sourceKey)}/summary`,
-    {
-      next: { revalidate: 60 },
+    const res = await fetch(
+      `${baseUrl}/api/users/${username}/sources/${encodeURIComponent(sourceKey)}/summary`,
+      {
+        next: { revalidate: 60 },
+      }
+    );
+
+    if (!res.ok) {
+      return { source: null };
     }
-  );
 
-  if (!res.ok) {
+    return res.json();
+  } catch {
     return { source: null };
   }
-
-  return res.json();
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ username: string }> }): Promise<Metadata> {
