@@ -1281,7 +1281,7 @@ pub async fn get_hourly_report(options: ReportOptions) -> Result<HourlyReport, S
         entry.output += msg.tokens.output;
         entry.cache_read += msg.tokens.cache_read;
         entry.cache_write += msg.tokens.cache_write;
-        entry.message_count += 1;
+        entry.message_count += msg.message_count.max(0);
         if msg.is_turn_start {
             entry.turn_count += 1;
         }

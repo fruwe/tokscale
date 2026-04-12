@@ -452,7 +452,7 @@ impl DataLoader {
                     0.0
                 };
                 daily_entry.cost += msg_cost;
-                daily_entry.message_count += 1;
+                daily_entry.message_count += msg.message_count.max(0) as u32;
                 if msg.is_turn_start {
                     daily_entry.turn_count += 1;
                 }
@@ -544,7 +544,7 @@ impl DataLoader {
                     0.0
                 };
                 hourly_entry.cost += h_cost;
-                hourly_entry.message_count += 1;
+                hourly_entry.message_count += msg.message_count.max(0) as u32;
                 if msg.is_turn_start {
                     hourly_entry.turn_count += 1;
                 }
