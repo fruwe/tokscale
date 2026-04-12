@@ -282,6 +282,8 @@ enum Commands {
         claude: bool,
         #[arg(long, help = "Show only Codex CLI usage")]
         codex: bool,
+        #[arg(long, help = "Show only Copilot CLI usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Gemini CLI usage")]
         gemini: bool,
         #[arg(long, help = "Show only Cursor IDE usage")]
@@ -292,6 +294,8 @@ enum Commands {
         droid: bool,
         #[arg(long, help = "Show only OpenClaw usage")]
         openclaw: bool,
+        #[arg(long, help = "Show only Hermes Agent usage")]
+        hermes: bool,
         #[arg(long, help = "Show only Pi usage")]
         pi: bool,
         #[arg(long, help = "Show only Kimi CLI usage")]
@@ -823,11 +827,13 @@ fn main() -> Result<()> {
             opencode,
             claude,
             codex,
+            copilot,
             gemini,
             cursor,
             amp,
             droid,
             openclaw,
+            hermes,
             pi,
             kimi,
             qwen,
@@ -850,11 +856,13 @@ fn main() -> Result<()> {
                 opencode,
                 claude,
                 codex,
+                copilot,
                 gemini,
                 cursor,
                 amp,
                 droid,
                 openclaw,
+                hermes,
                 pi,
                 kimi,
                 qwen,
@@ -2432,6 +2440,7 @@ fn run_hourly_report(
                 until,
                 year,
                 group_by: GroupBy::default(),
+                scanner_settings: tui::settings::load_scanner_settings(),
             })
             .await
         })
