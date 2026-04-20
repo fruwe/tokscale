@@ -201,7 +201,9 @@ fn lock_age(path: &Path, state: Option<SourceIdLockState>) -> Duration {
     // the future (clock skew), treat it as stale so we recycle instead of
     // stalling on the per-iteration retry up to FORCE_STALE_AFTER.
     match fs::metadata(path).and_then(|metadata| metadata.modified()) {
-        Ok(modified) => modified.elapsed().unwrap_or(SOURCE_ID_LOCK_FORCE_STALE_AFTER),
+        Ok(modified) => modified
+            .elapsed()
+            .unwrap_or(SOURCE_ID_LOCK_FORCE_STALE_AFTER),
         Err(_) => SOURCE_ID_LOCK_FORCE_STALE_AFTER,
     }
 }
@@ -231,9 +233,9 @@ fn lock_owner_is_alive(pid: u32) -> Option<bool> {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let pid_str = pid.to_string();
                 let matched = stdout.lines().any(|line| {
-                    line.split(',').nth(1).is_some_and(|col| {
-                        col.trim().trim_matches('"') == pid_str
-                    })
+                    line.split(',')
+                        .nth(1)
+                        .is_some_and(|col| col.trim().trim_matches('"') == pid_str)
                 });
                 Some(matched)
             }
