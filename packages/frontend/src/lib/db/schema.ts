@@ -132,6 +132,10 @@ export const deviceCodes = pgTable(
     index("idx_device_codes_device_code").on(table.deviceCode),
     index("idx_device_codes_user_code").on(table.userCode),
     index("idx_device_codes_expires_at").on(table.expiresAt),
+    // Supports cascade-delete path (DELETE FROM users → device_codes).
+    // The table is small today so seq-scans are cheap, but without this
+    // an index the FK check on every user delete gets worse linearly.
+    index("idx_device_codes_user_id").on(table.userId),
   ]
 );
 
@@ -183,11 +187,11 @@ export const submissions = pgTable(
       .defaultNow(),
   },
   (table) => [
-    index("idx_submissions_user_id").on(table.userId),
-    index("idx_submissions_status").on(table.status),
-    index("idx_submissions_total_tokens").on(table.totalTokens),
     index("idx_submissions_created_at").on(table.createdAt),
-    index("idx_submissions_date_range").on(table.dateStart, table.dateEnd),
+    // Covers the leaderboard ORDER BY and the (user_id, ...) left-prefix
+    // lookups that replaced the dropped idx_submissions_user_id. In prod
+    // this is the hottest index on the table (see the 0006 migration
+    // comment for scan counts at the time of cleanup).
     index("idx_submissions_leaderboard").on(
       table.userId,
       table.totalTokens,
