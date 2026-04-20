@@ -332,6 +332,132 @@ describe("POST /api/submit auth path", () => {
     });
   });
 
+  it("end-to-end rollout flow: scoped account rejects an unsourced submit with 409+hint", async () => {
+    // Rollout scenario: a user has already submitted from a new-CLI machine
+    // with meta.sourceId, so their submissions table has source-scoped rows.
+    // An older CLI on a different machine then submits WITHOUT sourceId.
+    // We want the real route code (transaction callback → resolveSubmissionScope
+    // → SourceIdentityRequiredError throw → outer catch) to end at 409+hint.
+    mockState.authenticatePersonalToken.mockResolvedValue({
+      status: "valid",
+      tokenId: "token-1",
+      userId: "user-1",
+      username: "alice",
+      displayName: "Alice",
+      avatarUrl: null,
+      isAdmin: false,
+      expiresAt: null,
+    });
+    mockState.validateSubmission.mockReturnValue({
+      valid: true,
+      data: {
+        // Note: NO meta.sourceId — simulates old CLI.
+        meta: {
+          generatedAt: new Date().toISOString(),
+          version: "0.9.0",
+          dateRange: { start: "2024-12-01", end: "2024-12-01" },
+        },
+        summary: {
+          totalTokens: 100,
+          totalCost: 0.1,
+          totalDays: 1,
+          activeDays: 1,
+          averagePerDay: 0.1,
+          maxCostInSingleDay: 0.1,
+          clients: ["claude"],
+          models: ["claude-sonnet-4"],
+        },
+        years: [],
+        contributions: [
+          {
+            date: "2024-12-01",
+            totals: { tokens: 100, cost: 0.1, messages: 1 },
+            intensity: 1,
+            tokenBreakdown: {
+              input: 60,
+              output: 40,
+              cacheRead: 0,
+              cacheWrite: 0,
+              reasoning: 0,
+            },
+            clients: [
+              {
+                client: "claude",
+                modelId: "claude-sonnet-4",
+                tokens: { input: 60, output: 40, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
+                cost: 0.1,
+                messages: 1,
+              },
+            ],
+          },
+        ],
+      },
+      errors: [],
+      warnings: [],
+    });
+
+    // The account already has a source-scoped row; resolveSubmissionScope
+    // sees sourceId=null and rows with non-null source_id → reject.
+    mockState.resolveSubmissionScope.mockReturnValue({
+      kind: "rejectMissingSourceIdentity",
+    });
+
+    // Drive the real route code through the transaction callback so
+    // SourceIdentityRequiredError is thrown from within the route (not
+    // mocked at the transaction boundary).
+    mockState.db.transaction.mockImplementation(async (callback) => {
+      const selectResults = [
+        // 3a scope select: returns an existing source-scoped row.
+        [{ id: "submission-scoped", sourceId: "machine-a" }],
+      ];
+      const tx = {
+        update: vi.fn(() => ({
+          set: vi.fn(() => ({
+            where: vi.fn(async () => []),
+          })),
+        })),
+        select: vi.fn(() => {
+          const builder = {
+            from: vi.fn(() => builder),
+            innerJoin: vi.fn(() => builder),
+            where: vi.fn(() => builder),
+            limit: vi.fn(async () => selectResults.shift() ?? []),
+            for: vi.fn(() => builder),
+            then: (resolve: (value: unknown) => unknown) =>
+              resolve(selectResults.shift() ?? []),
+          };
+          return builder;
+        }),
+        insert: vi.fn(() => ({ values: vi.fn(async () => []) })),
+        execute: vi.fn(async () => []),
+      };
+
+      return callback(tx as never);
+    });
+
+    const response = await POST(
+      new Request("http://localhost:3000/api/submit", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer tt_valid",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ meta: {}, contributions: [] }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "Source identity is required for accounts with source-scoped submissions",
+      hint: "Upgrade the CLI or set TOKSCALE_SOURCE_ID before submitting from this machine.",
+    });
+    // resolveSubmissionScope saw the existing scoped row and a null sourceId.
+    expect(mockState.resolveSubmissionScope).toHaveBeenCalledWith(
+      [{ id: "submission-scoped", sourceId: "machine-a" }],
+      null
+    );
+  });
+
   it('returns mode "merge" when the transaction falls back to an existing submission row', async () => {
     mockState.authenticatePersonalToken.mockResolvedValue({
       status: "valid",

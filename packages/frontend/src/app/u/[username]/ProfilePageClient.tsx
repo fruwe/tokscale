@@ -193,6 +193,13 @@ export default function ProfilePageClient({
       ? { [initialSelectedSourceSummary.sourceKey]: initialSelectedSourceSummary }
       : {}
   );
+  // Keyed by sourceKey: records which fetches failed so the UI can show an
+  // inline retry message instead of an infinite spinner. Summary failures
+  // degrade silently (the preview card just hides), but detail failures
+  // need visible feedback because the tab would otherwise appear stuck.
+  const [sourceDetailErrorCache, setSourceDetailErrorCache] = useState<
+    Record<string, string>
+  >({});
   const data = initialData;
 
   const graphData = useMemo(
@@ -270,9 +277,23 @@ export default function ProfilePageClient({
           ...current,
           [selectedSourceKey]: payload.source as SourceDetailData,
         }));
+        // Clear any prior error for this key after a successful retry.
+        setSourceDetailErrorCache((current) => {
+          if (!(selectedSourceKey in current)) return current;
+          const next = { ...current };
+          delete next[selectedSourceKey];
+          return next;
+        });
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const message =
+          error instanceof Error ? error.message : "Failed to load source details";
         console.error(error);
+        setSourceDetailErrorCache((current) => ({
+          ...current,
+          [selectedSourceKey]: message,
+        }));
       })
       .finally(() => {
         if (!cancelled) {
@@ -502,7 +523,12 @@ export default function ProfilePageClient({
                         </SourcePreviewCard>
                       )}
 
-                      {loadingSourceKey === selectedSourceKey && !selectedSource ? (
+                      {selectedSourceKey && sourceDetailErrorCache[selectedSourceKey] ? (
+                        <SourceErrorCard>
+                          Couldn&rsquo;t load this device right now. Please try
+                          again in a moment.
+                        </SourceErrorCard>
+                      ) : loadingSourceKey === selectedSourceKey && !selectedSource ? (
                         <SourceLoadingCard>
                           Loading source details…
                         </SourceLoadingCard>
@@ -787,6 +813,16 @@ const SourceLoadingCard = styled.div`
   border: 1px solid var(--color-border-default);
   background-color: var(--color-bg-elevated);
   color: var(--color-fg-muted);
+  padding: 20px;
+  font-size: 0.95rem;
+  font-weight: 600;
+`;
+
+const SourceErrorCard = styled.div`
+  border-radius: 16px;
+  border: 1px solid var(--color-border-default);
+  background-color: var(--color-bg-elevated);
+  color: var(--color-fg-default);
   padding: 20px;
   font-size: 0.95rem;
   font-weight: 600;

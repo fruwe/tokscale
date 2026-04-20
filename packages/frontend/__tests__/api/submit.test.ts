@@ -243,6 +243,127 @@ describe('POST /api/submit - Client-Level Merge', () => {
       expect(result.data?.meta.sourceName).toBe("Workstation");
     });
 
+    it.each([
+      ["null byte", "Work\u0000Laptop"],
+      ["ANSI escape", "Work\u001b[31mLaptop"],
+      ["zero-width joiner", "Work\u200dLaptop"],
+      ["right-to-left override", "Work\u202eLaptop"],
+    ])("rejects control character in sourceName (%s)", (_label, evilName) => {
+      const payload = {
+        meta: {
+          generatedAt: new Date().toISOString(),
+          version: "1.0.0",
+          sourceId: "machine-123",
+          sourceName: evilName,
+          dateRange: { start: "2024-12-01", end: "2024-12-01" },
+        },
+        summary: {
+          totalTokens: 1500,
+          totalCost: 1.5,
+          totalDays: 1,
+          activeDays: 1,
+          averagePerDay: 1.5,
+          maxCostInSingleDay: 1.5,
+          clients: ["claude" as const],
+          models: ["claude-sonnet-4"],
+        },
+        years: [{
+          year: "2024",
+          totalTokens: 1500,
+          totalCost: 1.5,
+          range: { start: "2024-12-01", end: "2024-12-01" },
+        }],
+        contributions: [{
+          date: "2024-12-01",
+          totals: { tokens: 1500, cost: 1.5, messages: 5 },
+          intensity: 2 as const,
+          tokenBreakdown: {
+            input: 1000,
+            output: 500,
+            cacheRead: 0,
+            cacheWrite: 0,
+            reasoning: 0,
+          },
+          clients: [{
+            client: "claude" as const,
+            modelId: "claude-sonnet-4",
+            tokens: {
+              input: 1000,
+              output: 500,
+              cacheRead: 0,
+              cacheWrite: 0,
+              reasoning: 0,
+            },
+            cost: 1.5,
+            messages: 5,
+          }],
+        }],
+      };
+
+      const result = validateSubmission(payload);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("control characters"))).toBe(true);
+    });
+
+    it("rejects control character in sourceId (zero-width joiner)", () => {
+      const payload = {
+        meta: {
+          generatedAt: new Date().toISOString(),
+          version: "1.0.0",
+          sourceId: "machine\u200d123",
+          sourceName: "Workstation",
+          dateRange: { start: "2024-12-01", end: "2024-12-01" },
+        },
+        summary: {
+          totalTokens: 1500,
+          totalCost: 1.5,
+          totalDays: 1,
+          activeDays: 1,
+          averagePerDay: 1.5,
+          maxCostInSingleDay: 1.5,
+          clients: ["claude" as const],
+          models: ["claude-sonnet-4"],
+        },
+        years: [{
+          year: "2024",
+          totalTokens: 1500,
+          totalCost: 1.5,
+          range: { start: "2024-12-01", end: "2024-12-01" },
+        }],
+        contributions: [{
+          date: "2024-12-01",
+          totals: { tokens: 1500, cost: 1.5, messages: 5 },
+          intensity: 2 as const,
+          tokenBreakdown: {
+            input: 1000,
+            output: 500,
+            cacheRead: 0,
+            cacheWrite: 0,
+            reasoning: 0,
+          },
+          clients: [{
+            client: "claude" as const,
+            modelId: "claude-sonnet-4",
+            tokens: {
+              input: 1000,
+              output: 500,
+              cacheRead: 0,
+              cacheWrite: 0,
+              reasoning: 0,
+            },
+            cost: 1.5,
+            messages: 5,
+          }],
+        }],
+      };
+
+      const result = validateSubmission(payload);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("control characters"))).toBe(true);
+    });
+
     it("should normalize blank source metadata to undefined", () => {
       const payload = {
         meta: {

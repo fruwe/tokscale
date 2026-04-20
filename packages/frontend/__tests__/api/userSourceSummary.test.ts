@@ -197,6 +197,101 @@ describe("GET /api/users/[username]/sources/[sourceId]/summary", () => {
     });
   });
 
+  it("breaks topClient / topModel ties alphabetically for determinism", async () => {
+    mockState.pushSelectResult([
+      { id: "user-1", username: "alice", displayName: "Alice", avatarUrl: null },
+    ]);
+    mockState.pushSelectResult([
+      {
+        id: "submission-1",
+        sourceId: "machine-a",
+        sourceName: "Work",
+        totalTokens: 2000,
+        totalCost: "20.0000",
+        inputTokens: 1200,
+        outputTokens: 800,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        reasoningTokens: 0,
+        submitCount: 1,
+        dateStart: "2026-03-01",
+        dateEnd: "2026-03-01",
+        // Insertion order intentionally puts "zulu" first to prove that we
+        // do NOT return the first-inserted entry on ties.
+        sourcesUsed: ["zulu", "alpha"],
+        modelsUsed: ["zoo-model", "alpha-model"],
+        updatedAt: new Date("2026-03-01T10:00:00.000Z"),
+      },
+    ]);
+    mockState.pushSelectResult([
+      {
+        date: "2026-03-01",
+        timestampMs: 1700000000000,
+        tokens: 2000,
+        cost: "20.0000",
+        inputTokens: 1200,
+        outputTokens: 800,
+        sourceBreakdown: {
+          // Equal token counts — tie-break MUST resolve alphabetically.
+          zulu: {
+            tokens: 1000,
+            cost: 10,
+            input: 600,
+            output: 400,
+            cacheRead: 0,
+            cacheWrite: 0,
+            reasoning: 0,
+            messages: 2,
+            models: {
+              "zoo-model": {
+                tokens: 1000,
+                cost: 10,
+                input: 600,
+                output: 400,
+                cacheRead: 0,
+                cacheWrite: 0,
+                reasoning: 0,
+                messages: 2,
+              },
+            },
+          },
+          alpha: {
+            tokens: 1000,
+            cost: 10,
+            input: 600,
+            output: 400,
+            cacheRead: 0,
+            cacheWrite: 0,
+            reasoning: 0,
+            messages: 2,
+            models: {
+              "alpha-model": {
+                tokens: 1000,
+                cost: 10,
+                input: 600,
+                output: 400,
+                cacheRead: 0,
+                cacheWrite: 0,
+                reasoning: 0,
+                messages: 2,
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    const response = await GET(
+      new Request("http://localhost:3000/api/users/alice/sources/machine-a/summary"),
+      { params: Promise.resolve({ username: "alice", sourceId: "machine-a" }) }
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.source.topClient).toBe("alpha");
+    expect(body.source.topModel).toBe("alpha-model");
+  });
+
   it("returns 404 for an unknown source", async () => {
     mockState.pushSelectResult([
       {

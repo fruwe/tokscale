@@ -131,6 +131,11 @@ export async function GET(_request: Request, { params }: RouteParams) {
       (day) => day.tokens > 0
     ).length;
 
+    // Deterministic tie-break: when two clients/models have identical token
+    // counts, iteration order of Object.entries depends on insertion order,
+    // which in turn depends on DB row ordering — not stable across requests.
+    // Alphabetical fallback keeps the UI from flickering between equally-used
+    // entries on each render.
     const topClient = Object.entries(
       Array.from(source.contributions.values()).reduce<Record<string, number>>(
         (acc, day) => {
@@ -141,7 +146,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
         },
         {}
       )
-    ).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    ).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? null;
 
     const topModel = Object.entries(
       Array.from(source.contributions.values()).reduce<Record<string, number>>(
@@ -153,7 +158,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
         },
         {}
       )
-    ).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    ).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? null;
 
     return NextResponse.json({
       user,

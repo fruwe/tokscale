@@ -84,6 +84,12 @@ const DataSummarySchema = z.object({
   models: z.array(z.string()),
 });
 
+// Reject \p{C} (control + format + surrogate + private-use + unassigned).
+// A sourceName/sourceId carrying zero-width joiners, BIDI overrides, or
+// terminal-bomb escape sequences would render badly in the profile UI and
+// could confuse operators reading logs. The rename endpoint already
+// enforces this; the submit path must too, otherwise a malicious CLI can
+// plant strings that rename cannot un-plant without a round trip.
 const OptionalSourceMetadataSchema = z.preprocess(
   (value) => {
     if (typeof value === "string" && value.trim() === "") {
@@ -91,7 +97,15 @@ const OptionalSourceMetadataSchema = z.preprocess(
     }
     return value;
   },
-  z.string().trim().min(1).max(255).optional()
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(255)
+    .refine((value) => !/\p{C}/u.test(value), {
+      message: "must not contain control characters",
+    })
+    .optional()
 );
 
 const ExportMetaSchema = z.object({
