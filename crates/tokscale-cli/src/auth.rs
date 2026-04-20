@@ -1111,10 +1111,9 @@ mod tests {
         // Lines without '=' (blank line, garbage, future metadata) must be
         // skipped — not abort the whole parse. Key/value pairs around them
         // still produce a valid state.
-        let parsed = parse_source_id_lock_state(
-            "garbage\npid=1\n\ncreated_at_ms=2\nrandom-trailer\n",
-        )
-        .unwrap();
+        let parsed =
+            parse_source_id_lock_state("garbage\npid=1\n\ncreated_at_ms=2\nrandom-trailer\n")
+                .unwrap();
         assert_eq!(parsed.pid, 1);
         assert_eq!(parsed.created_at_ms, 2);
     }
