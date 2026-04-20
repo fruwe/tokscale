@@ -515,11 +515,20 @@ export async function POST(request: Request) {
         updatedAt: new Date(),
       };
 
-      if (sourceName !== null) {
-        submissionUpdate.sourceName = sourceName;
-      }
-      if (sourceId !== null && upgradeLegacyRow) {
-        submissionUpdate.sourceId = sourceId;
+      // Only write sourceName when the row is fresh this tx — either a
+      // brand-new insert (handled by the insert branch above) or a legacy
+      // unsourced row being promoted to source-scoped for the first time.
+      // For subsequent updates to an existing source-scoped row we must
+      // NOT overwrite sourceName, because the user may have renamed it via
+      // PATCH /api/settings/sources/:sourceId; otherwise every CLI submit
+      // would clobber the rename with the default "CLI on <hostname>".
+      if (upgradeLegacyRow) {
+        if (sourceId !== null) {
+          submissionUpdate.sourceId = sourceId;
+        }
+        if (sourceName !== null) {
+          submissionUpdate.sourceName = sourceName;
+        }
       }
 
       await tx

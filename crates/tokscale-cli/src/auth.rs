@@ -171,7 +171,13 @@ fn parse_source_id_lock_state(content: &str) -> Option<SourceIdLockState> {
     let mut created_at_ms = None;
 
     for line in content.lines() {
-        let (key, value) = line.split_once('=')?;
+        // Skip lines without `=` (blank lines, trailing whitespace, or any
+        // future metadata key we don't recognize) instead of aborting the
+        // whole parse. A stray malformed line would otherwise force
+        // lock_age into its mtime fallback and delay stale-lock cleanup.
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
         match key.trim() {
             "pid" => pid = value.trim().parse::<u32>().ok(),
             "created_at_ms" => created_at_ms = value.trim().parse::<u128>().ok(),
@@ -220,10 +226,12 @@ fn lock_owner_is_alive(pid: u32) -> Option<bool> {
 
     #[cfg(windows)]
     {
-        // Locale-agnostic parse: tasklist /FO CSV /NH emits one row per
-        // matching process with the PID in the second CSV column. "No tasks
-        // are running" is localized text and cannot be string-matched safely,
-        // so we check the structured output instead.
+        // Locale-agnostic: `tasklist /FI "PID eq N" /FO CSV /NH` already
+        // filters server-side on PID. The filter emits exactly 0 rows when
+        // no process matches, and 1 row when one does. We only need to
+        // detect whether any non-empty CSV row came back — we do NOT try
+        // to parse the PID back out, because process names can legitimately
+        // contain commas and a naive split(',') would misread the column.
         let output = std::process::Command::new("tasklist")
             .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
             .output();
@@ -231,12 +239,7 @@ fn lock_owner_is_alive(pid: u32) -> Option<bool> {
         match output {
             Ok(output) if output.status.success() => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                let pid_str = pid.to_string();
-                let matched = stdout.lines().any(|line| {
-                    line.split(',')
-                        .nth(1)
-                        .is_some_and(|col| col.trim().trim_matches('"') == pid_str)
-                });
+                let matched = stdout.lines().any(|line| !line.trim().is_empty());
                 Some(matched)
             }
             Ok(_) => None,
@@ -1104,9 +1107,16 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_source_id_lock_state_returns_none_on_malformed_line() {
-        // A line without '=' short-circuits via the `?` on split_once.
-        assert!(parse_source_id_lock_state("garbage\npid=1\ncreated_at_ms=2\n").is_none());
+    fn test_parse_source_id_lock_state_skips_lines_without_equals() {
+        // Lines without '=' (blank line, garbage, future metadata) must be
+        // skipped — not abort the whole parse. Key/value pairs around them
+        // still produce a valid state.
+        let parsed = parse_source_id_lock_state(
+            "garbage\npid=1\n\ncreated_at_ms=2\nrandom-trailer\n",
+        )
+        .unwrap();
+        assert_eq!(parsed.pid, 1);
+        assert_eq!(parsed.created_at_ms, 2);
     }
 
     // =====================================================================

@@ -656,4 +656,290 @@ describe("POST /api/submit auth path", () => {
       clients: ["claude"],
     });
   });
+
+  it("preserves a user-renamed sourceName — CLI default does NOT overwrite on subsequent merges", async () => {
+    mockState.authenticatePersonalToken.mockResolvedValue({
+      status: "valid",
+      tokenId: "token-1",
+      userId: "user-1",
+      username: "alice",
+      displayName: "Alice",
+      avatarUrl: null,
+      isAdmin: false,
+      expiresAt: null,
+    });
+    mockState.validateSubmission.mockReturnValue({
+      valid: true,
+      data: {
+        meta: {
+          generatedAt: new Date().toISOString(),
+          version: "1.0.0",
+          sourceId: "machine-a",
+          // CLI's default hostname-derived name — the whole point of the
+          // test is that the submit path must NOT clobber the user's
+          // rename with this.
+          sourceName: "CLI on junhoyeo-mbp",
+          dateRange: { start: "2024-12-01", end: "2024-12-01" },
+        },
+        summary: {
+          totalTokens: 100,
+          totalCost: 0.1,
+          totalDays: 1,
+          activeDays: 1,
+          averagePerDay: 0.1,
+          maxCostInSingleDay: 0.1,
+          clients: ["claude"],
+          models: ["claude-sonnet-4"],
+        },
+        years: [],
+        contributions: [
+          {
+            date: "2024-12-01",
+            totals: { tokens: 100, cost: 0.1, messages: 1 },
+            intensity: 1,
+            tokenBreakdown: {
+              input: 60,
+              output: 40,
+              cacheRead: 0,
+              cacheWrite: 0,
+              reasoning: 0,
+            },
+            clients: [
+              {
+                client: "claude",
+                modelId: "claude-sonnet-4",
+                tokens: { input: 60, output: 40, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
+                cost: 0.1,
+                messages: 1,
+              },
+            ],
+          },
+        ],
+      },
+      errors: [],
+      warnings: [],
+    });
+
+    // Row is existing source-scoped (not an upgrade) — no rename should flow.
+    mockState.resolveSubmissionScope.mockReturnValue({
+      kind: "existing",
+      submissionId: "submission-1",
+      upgradeLegacyRow: false,
+    });
+    mockState.clientContributionToBreakdownData.mockReturnValue({
+      tokens: 100, cost: 0.1, input: 60, output: 40,
+      cacheRead: 0, cacheWrite: 0, reasoning: 0, messages: 1,
+    });
+    mockState.mergeClientBreakdowns.mockImplementation(
+      (_existing: unknown, incoming: unknown) => incoming
+    );
+    mockState.recalculateDayTotals.mockReturnValue({
+      tokens: 100, cost: 0.1, inputTokens: 60, outputTokens: 40,
+      cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0,
+    });
+    mockState.buildModelBreakdown.mockReturnValue({ "claude-sonnet-4": 100 });
+    mockState.mergeTimestampMs.mockReturnValue(null);
+
+    const setCalls: Array<Record<string, unknown>> = [];
+
+    mockState.db.transaction.mockImplementation(async (callback) => {
+      const selectResults = [
+        [{ id: "submission-1", sourceId: "machine-a" }], // 3a scope
+        [], // 3b daily breakdown
+        [{
+          totalTokens: 100, totalCost: "0.1000",
+          inputTokens: 60, outputTokens: 40,
+          dateStart: "2024-12-01", dateEnd: "2024-12-01",
+          activeDays: 1, rowCount: 1,
+        }], // 3d aggregates
+        [{ sourceBreakdown: { claude: { tokens: 100, cost: 0.1, input: 60, output: 40,
+          cacheRead: 0, cacheWrite: 0, reasoning: 0, messages: 1,
+          models: { "claude-sonnet-4": { tokens: 100, cost: 0.1, input: 60, output: 40,
+            cacheRead: 0, cacheWrite: 0, reasoning: 0, messages: 1 } } } } }], // 3d allDays
+        [{ totalTokens: 100, totalCost: "0.1000",
+          dateStart: "2024-12-01", dateEnd: "2024-12-01" }], // metrics
+        [{ activeDays: 1 }],
+        [{ sourcesUsed: ["claude"] }],
+      ];
+      const tx = {
+        update: vi.fn((table: unknown) => ({
+          set: vi.fn((payload: Record<string, unknown>) => {
+            if (table === mockState.submissions) setCalls.push(payload);
+            return { where: vi.fn(async () => []) };
+          }),
+        })),
+        select: vi.fn(() => {
+          const builder = {
+            from: vi.fn(() => builder),
+            innerJoin: vi.fn(() => builder),
+            where: vi.fn(() => builder),
+            limit: vi.fn(async () => selectResults.shift() ?? []),
+            for: vi.fn(() => builder),
+            then: (resolve: (value: unknown) => unknown) =>
+              resolve(selectResults.shift() ?? []),
+          };
+          return builder;
+        }),
+        insert: vi.fn(() => ({
+          values: vi.fn(async () => []),
+          onConflictDoNothing: vi.fn(() => ({ returning: vi.fn(async () => []) })),
+        })),
+        execute: vi.fn(async () => []),
+      };
+      return callback(tx as never);
+    });
+
+    const response = await POST(
+      new Request("http://localhost:3000/api/submit", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer tt_valid",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ meta: {}, contributions: [] }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    // The submission-row update must NOT include sourceName — otherwise the
+    // CLI's default would clobber a user rename from PATCH /sources/:id.
+    const submissionUpdate = setCalls.find(
+      (c) => c.totalTokens !== undefined
+    );
+    expect(submissionUpdate).toBeDefined();
+    expect(submissionUpdate).not.toHaveProperty("sourceName");
+    // And it must NOT include sourceId either on a non-upgrade path.
+    expect(submissionUpdate).not.toHaveProperty("sourceId");
+  });
+
+  it("writes sourceId+sourceName when upgrading a legacy unsourced row", async () => {
+    mockState.authenticatePersonalToken.mockResolvedValue({
+      status: "valid",
+      tokenId: "token-1",
+      userId: "user-1",
+      username: "alice",
+      displayName: "Alice",
+      avatarUrl: null,
+      isAdmin: false,
+      expiresAt: null,
+    });
+    mockState.validateSubmission.mockReturnValue({
+      valid: true,
+      data: {
+        meta: {
+          generatedAt: new Date().toISOString(),
+          version: "1.0.0",
+          sourceId: "machine-a",
+          sourceName: "CLI on junhoyeo-mbp",
+          dateRange: { start: "2024-12-01", end: "2024-12-01" },
+        },
+        summary: {
+          totalTokens: 100, totalCost: 0.1,
+          totalDays: 1, activeDays: 1,
+          averagePerDay: 0.1, maxCostInSingleDay: 0.1,
+          clients: ["claude"], models: ["claude-sonnet-4"],
+        },
+        years: [],
+        contributions: [{
+          date: "2024-12-01",
+          totals: { tokens: 100, cost: 0.1, messages: 1 },
+          intensity: 1,
+          tokenBreakdown: { input: 60, output: 40, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
+          clients: [{
+            client: "claude", modelId: "claude-sonnet-4",
+            tokens: { input: 60, output: 40, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
+            cost: 0.1, messages: 1,
+          }],
+        }],
+      },
+      errors: [],
+      warnings: [],
+    });
+
+    mockState.resolveSubmissionScope.mockReturnValue({
+      kind: "existing",
+      submissionId: "legacy-row",
+      upgradeLegacyRow: true,
+    });
+    mockState.clientContributionToBreakdownData.mockReturnValue({
+      tokens: 100, cost: 0.1, input: 60, output: 40,
+      cacheRead: 0, cacheWrite: 0, reasoning: 0, messages: 1,
+    });
+    mockState.mergeClientBreakdowns.mockImplementation(
+      (_existing: unknown, incoming: unknown) => incoming
+    );
+    mockState.recalculateDayTotals.mockReturnValue({
+      tokens: 100, cost: 0.1, inputTokens: 60, outputTokens: 40,
+      cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0,
+    });
+    mockState.buildModelBreakdown.mockReturnValue({ "claude-sonnet-4": 100 });
+    mockState.mergeTimestampMs.mockReturnValue(null);
+
+    const setCalls: Array<Record<string, unknown>> = [];
+
+    mockState.db.transaction.mockImplementation(async (callback) => {
+      const selectResults = [
+        [{ id: "legacy-row", sourceId: null }], // 3a scope — legacy row
+        [],
+        [{
+          totalTokens: 100, totalCost: "0.1000",
+          inputTokens: 60, outputTokens: 40,
+          dateStart: "2024-12-01", dateEnd: "2024-12-01",
+          activeDays: 1, rowCount: 1,
+        }],
+        [{ sourceBreakdown: {} }],
+        [{ totalTokens: 100, totalCost: "0.1000",
+          dateStart: "2024-12-01", dateEnd: "2024-12-01" }],
+        [{ activeDays: 1 }],
+        [{ sourcesUsed: ["claude"] }],
+      ];
+      const tx = {
+        update: vi.fn((table: unknown) => ({
+          set: vi.fn((payload: Record<string, unknown>) => {
+            if (table === mockState.submissions) setCalls.push(payload);
+            return { where: vi.fn(async () => []) };
+          }),
+        })),
+        select: vi.fn(() => {
+          const builder = {
+            from: vi.fn(() => builder),
+            innerJoin: vi.fn(() => builder),
+            where: vi.fn(() => builder),
+            limit: vi.fn(async () => selectResults.shift() ?? []),
+            for: vi.fn(() => builder),
+            then: (resolve: (value: unknown) => unknown) =>
+              resolve(selectResults.shift() ?? []),
+          };
+          return builder;
+        }),
+        insert: vi.fn(() => ({
+          values: vi.fn(async () => []),
+          onConflictDoNothing: vi.fn(() => ({ returning: vi.fn(async () => []) })),
+        })),
+        execute: vi.fn(async () => []),
+      };
+      return callback(tx as never);
+    });
+
+    const response = await POST(
+      new Request("http://localhost:3000/api/submit", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer tt_valid",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ meta: {}, contributions: [] }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const submissionUpdate = setCalls.find((c) => c.totalTokens !== undefined);
+    expect(submissionUpdate).toBeDefined();
+    // The upgrade path MUST stamp sourceId + the CLI-provided sourceName
+    // on the former legacy row.
+    expect(submissionUpdate).toMatchObject({
+      sourceId: "machine-a",
+      sourceName: "CLI on junhoyeo-mbp",
+    });
+  });
 });
