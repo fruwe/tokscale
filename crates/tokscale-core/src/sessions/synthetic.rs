@@ -422,7 +422,8 @@ mod tests {
         let db = dir.path().join("empty.db");
         let conn = Connection::open(&db).unwrap();
         // Unrelated table → parser's introspection probe returns false.
-        conn.execute_batch("CREATE TABLE other (x INTEGER);").unwrap();
+        conn.execute_batch("CREATE TABLE other (x INTEGER);")
+            .unwrap();
         drop(conn);
 
         assert!(parse_octofriend_sqlite(&db).is_empty());
@@ -510,7 +511,17 @@ mod tests {
         conn.execute(
             "INSERT INTO messages VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
             rusqlite::params![
-                "zero", "hf:x/y", 0, 0, 0, 0, 0, 0.0, 1_700_000_000.0_f64, "sess-1", "synthetic",
+                "zero",
+                "hf:x/y",
+                0,
+                0,
+                0,
+                0,
+                0,
+                0.0,
+                1_700_000_000.0_f64,
+                "sess-1",
+                "synthetic",
             ],
         )
         .unwrap();
