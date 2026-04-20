@@ -362,4 +362,248 @@ mod tests {
         let result = parse_octofriend_sqlite(Path::new("/nonexistent/path/sqlite.db"));
         assert!(result.is_empty());
     }
+
+    #[test]
+    fn test_is_synthetic_gateway_combines_model_and_provider_checks() {
+        assert!(is_synthetic_gateway("hf:org/model", "unknown"));
+        assert!(is_synthetic_gateway("claude-sonnet-4", "synthetic"));
+        assert!(!is_synthetic_gateway("claude-sonnet-4", "anthropic"));
+    }
+
+    #[test]
+    fn test_normalize_synthetic_model_hf_without_org_slash() {
+        // "hf:<name>" with no "/" should still strip the prefix.
+        assert_eq!(normalize_synthetic_model("hf:just-a-name"), "just-a-name");
+    }
+
+    #[test]
+    fn test_normalize_synthetic_model_accounts_without_models_segment() {
+        // An "accounts/…" path without "/models/" falls through to lowercase.
+        assert_eq!(
+            normalize_synthetic_model("accounts/fireworks/other/thing"),
+            "accounts/fireworks/other/thing"
+        );
+    }
+
+    #[test]
+    fn test_normalize_synthetic_gateway_fields_returns_false_for_non_gateway() {
+        let mut model_id = "claude-sonnet-4".to_string();
+        let mut provider_id = "anthropic".to_string();
+        let matched = normalize_synthetic_gateway_fields(&mut model_id, &mut provider_id);
+        assert!(!matched);
+        assert_eq!(model_id, "claude-sonnet-4");
+        assert_eq!(provider_id, "anthropic");
+    }
+
+    #[test]
+    fn test_normalize_synthetic_gateway_fields_replaces_empty_provider() {
+        let mut model_id = "hf:org/x".to_string();
+        let mut provider_id = String::new();
+        let matched = normalize_synthetic_gateway_fields(&mut model_id, &mut provider_id);
+        assert!(matched);
+        assert_eq!(provider_id, "synthetic");
+    }
+
+    #[test]
+    fn test_matches_synthetic_filter_matches_by_client_name_only() {
+        // Even without gateway markers, a client named "synthetic" qualifies.
+        assert!(matches_synthetic_filter("synthetic", "gpt-4o", "openai"));
+    }
+
+    // =====================================================================
+    // parse_octofriend_sqlite — Strategy 2
+    // =====================================================================
+
+    use rusqlite::Connection;
+
+    #[test]
+    fn test_parse_octofriend_sqlite_empty_when_no_known_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("empty.db");
+        let conn = Connection::open(&db).unwrap();
+        // Unrelated table → parser's introspection probe returns false.
+        conn.execute_batch("CREATE TABLE other (x INTEGER);").unwrap();
+        drop(conn);
+
+        assert!(parse_octofriend_sqlite(&db).is_empty());
+    }
+
+    #[test]
+    fn test_parse_octofriend_sqlite_parses_messages_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("oct.db");
+        let conn = Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE messages (
+                id TEXT,
+                model TEXT,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                cache_read_tokens INTEGER,
+                cache_write_tokens INTEGER,
+                reasoning_tokens INTEGER,
+                cost REAL,
+                timestamp REAL,
+                session_id TEXT,
+                provider TEXT
+            );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO messages VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            rusqlite::params![
+                "msg-1",
+                "hf:org/model-x",
+                100,
+                50,
+                10,
+                5,
+                2,
+                0.25,
+                // Timestamp > 1e12 is already in ms.
+                1700000000000.0_f64,
+                "sess-1",
+                "synthetic",
+            ],
+        )
+        .unwrap();
+        drop(conn);
+
+        let messages = parse_octofriend_sqlite(&db);
+        assert_eq!(messages.len(), 1);
+        let m = &messages[0];
+        assert_eq!(m.client, "synthetic");
+        assert_eq!(m.model_id, "model-x");
+        assert_eq!(m.provider_id, "synthetic");
+        assert_eq!(m.session_id, "sess-1");
+        assert_eq!(m.tokens.input, 100);
+        assert_eq!(m.tokens.output, 50);
+        assert_eq!(m.tokens.cache_read, 10);
+        assert_eq!(m.tokens.cache_write, 5);
+        assert_eq!(m.tokens.reasoning, 2);
+        assert_eq!(m.cost, 0.25);
+        assert_eq!(m.timestamp, 1700000000000);
+        assert_eq!(m.dedup_key.as_deref(), Some("msg-1"));
+    }
+
+    #[test]
+    fn test_parse_octofriend_sqlite_skips_zero_token_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("oct.db");
+        let conn = Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE messages (
+                id TEXT,
+                model TEXT,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                cache_read_tokens INTEGER,
+                cache_write_tokens INTEGER,
+                reasoning_tokens INTEGER,
+                cost REAL,
+                timestamp REAL,
+                session_id TEXT,
+                provider TEXT
+            );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO messages VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            rusqlite::params![
+                "zero", "hf:x/y", 0, 0, 0, 0, 0, 0.0, 1_700_000_000.0_f64, "sess-1", "synthetic",
+            ],
+        )
+        .unwrap();
+        drop(conn);
+
+        assert!(parse_octofriend_sqlite(&db).is_empty());
+    }
+
+    #[test]
+    fn test_parse_octofriend_sqlite_converts_seconds_timestamp_to_ms() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("oct.db");
+        let conn = Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE messages (
+                id TEXT,
+                model TEXT,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                cache_read_tokens INTEGER,
+                cache_write_tokens INTEGER,
+                reasoning_tokens INTEGER,
+                cost REAL,
+                timestamp REAL,
+                session_id TEXT,
+                provider TEXT
+            );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO messages VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            rusqlite::params![
+                "msg-sec",
+                "hf:x/y",
+                10,
+                0,
+                0,
+                0,
+                0,
+                0.0,
+                // Seconds-since-epoch (<= 1e12) should be multiplied by 1000.
+                1_700_000_000.0_f64,
+                "sess-1",
+                "synthetic",
+            ],
+        )
+        .unwrap();
+        drop(conn);
+
+        let messages = parse_octofriend_sqlite(&db);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].timestamp, 1_700_000_000_000);
+    }
+
+    #[test]
+    fn test_parse_octofriend_sqlite_falls_back_to_token_usage_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("oct.db");
+        let conn = Connection::open(&db).unwrap();
+        // No "messages" table → the parser's introspection probe picks up
+        // "token_usage" instead (known-table list includes it).
+        conn.execute_batch(
+            "CREATE TABLE token_usage (
+                id TEXT,
+                model TEXT,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                timestamp REAL,
+                session_id TEXT
+            );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO token_usage VALUES (?1,?2,?3,?4,?5,?6)",
+            rusqlite::params![
+                "tu-1",
+                "accounts/fireworks/models/deepseek-v3",
+                200,
+                100,
+                1_700_000_000_000.0_f64,
+                "sess-x",
+            ],
+        )
+        .unwrap();
+        drop(conn);
+
+        let messages = parse_octofriend_sqlite(&db);
+        assert_eq!(messages.len(), 1);
+        let m = &messages[0];
+        assert_eq!(m.model_id, "deepseek-v3");
+        assert_eq!(m.provider_id, "synthetic");
+        assert_eq!(m.tokens.input, 200);
+        assert_eq!(m.tokens.output, 100);
+        assert_eq!(m.dedup_key.as_deref(), Some("tu-1"));
+    }
 }

@@ -285,6 +285,220 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_model_name_collapses_duplicate_hyphens() {
+        // Brackets that collapse to nothing can leave adjacent hyphens.
+        assert_eq!(
+            normalize_model_name("Claude-[Anthropic]-Opus-4"),
+            "claude-opus-4"
+        );
+    }
+
+    #[test]
+    fn test_extract_model_from_jsonl_finds_system_reminder_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        std::fs::write(
+            &path,
+            "{\"type\":\"user\"}\n{\"type\":\"system-reminder\",\"text\":\"Model: Claude Sonnet 4.5 [Anthropic]\"}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            extract_model_from_jsonl(&path).as_deref(),
+            Some("claude sonnet 4-5")
+        );
+    }
+
+    #[test]
+    fn test_extract_model_from_jsonl_returns_none_when_pattern_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        std::fs::write(&path, "{\"type\":\"user\"}\n").unwrap();
+        assert!(extract_model_from_jsonl(&path).is_none());
+    }
+
+    #[test]
+    fn test_parse_droid_file_happy_path_with_full_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("abc-123.settings.json");
+        std::fs::write(
+            &path,
+            r#"{
+                "model": "custom:Claude-Sonnet-4-[Anthropic]",
+                "providerLock": "anthropic",
+                "providerLockTimestamp": "2026-01-15T12:00:00Z",
+                "tokenUsage": {
+                    "inputTokens": 100,
+                    "outputTokens": 50,
+                    "cacheCreationTokens": 10,
+                    "cacheReadTokens": 5,
+                    "thinkingTokens": 2
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let messages = parse_droid_file(&path);
+        assert_eq!(messages.len(), 1);
+        let m = &messages[0];
+        assert_eq!(m.client, "droid");
+        assert_eq!(m.model_id, "claude-sonnet-4");
+        assert_eq!(m.provider_id, "anthropic");
+        assert_eq!(m.session_id, "abc-123");
+        assert_eq!(m.tokens.input, 100);
+        assert_eq!(m.tokens.output, 50);
+        assert_eq!(m.tokens.cache_write, 10);
+        assert_eq!(m.tokens.cache_read, 5);
+        assert_eq!(m.tokens.reasoning, 2);
+        // providerLockTimestamp parses to 2026-01-15T12:00:00Z
+        let expected = chrono::DateTime::parse_from_rfc3339("2026-01-15T12:00:00Z")
+            .unwrap()
+            .timestamp_millis();
+        assert_eq!(m.timestamp, expected);
+    }
+
+    #[test]
+    fn test_parse_droid_file_returns_empty_for_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope.settings.json");
+        assert!(parse_droid_file(&missing).is_empty());
+    }
+
+    #[test]
+    fn test_parse_droid_file_returns_empty_for_malformed_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.settings.json");
+        std::fs::write(&path, "{ not valid json").unwrap();
+        assert!(parse_droid_file(&path).is_empty());
+    }
+
+    #[test]
+    fn test_parse_droid_file_returns_empty_when_token_usage_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.settings.json");
+        std::fs::write(&path, r#"{"model":"gpt-4o","providerLock":"openai"}"#).unwrap();
+        assert!(parse_droid_file(&path).is_empty());
+    }
+
+    #[test]
+    fn test_parse_droid_file_returns_empty_when_all_tokens_are_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("zero.settings.json");
+        std::fs::write(
+            &path,
+            r#"{
+                "model": "claude-sonnet-4",
+                "providerLock": "anthropic",
+                "providerLockTimestamp": "2026-01-15T12:00:00Z",
+                "tokenUsage": {
+                    "inputTokens": 0,
+                    "outputTokens": 0,
+                    "cacheCreationTokens": 0,
+                    "cacheReadTokens": 0,
+                    "thinkingTokens": 0
+                }
+            }"#,
+        )
+        .unwrap();
+        assert!(parse_droid_file(&path).is_empty());
+    }
+
+    #[test]
+    fn test_parse_droid_file_infers_provider_from_model_when_lock_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("inferred.settings.json");
+        std::fs::write(
+            &path,
+            r#"{
+                "model": "gpt-4o",
+                "providerLockTimestamp": "2026-01-15T12:00:00Z",
+                "tokenUsage": { "inputTokens": 1 }
+            }"#,
+        )
+        .unwrap();
+
+        let messages = parse_droid_file(&path);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].provider_id, "openai");
+        assert_eq!(messages[0].model_id, "gpt-4o");
+    }
+
+    #[test]
+    fn test_parse_droid_file_uses_default_model_when_no_model_and_no_jsonl() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nomodel.settings.json");
+        std::fs::write(
+            &path,
+            r#"{
+                "providerLock": "anthropic",
+                "providerLockTimestamp": "2026-01-15T12:00:00Z",
+                "tokenUsage": { "inputTokens": 1 }
+            }"#,
+        )
+        .unwrap();
+
+        let messages = parse_droid_file(&path);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].model_id, "claude-unknown");
+    }
+
+    #[test]
+    fn test_parse_droid_file_extracts_model_from_sibling_jsonl() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings_path = dir.path().join("sess.settings.json");
+        let jsonl_path = dir.path().join("sess.jsonl");
+        std::fs::write(
+            &settings_path,
+            r#"{
+                "providerLock": "anthropic",
+                "providerLockTimestamp": "2026-01-15T12:00:00Z",
+                "tokenUsage": { "outputTokens": 5 }
+            }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &jsonl_path,
+            "{\"type\":\"system-reminder\",\"text\":\"Model: Claude Haiku 4 [Anthropic]\"}\n",
+        )
+        .unwrap();
+
+        let messages = parse_droid_file(&settings_path);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].model_id, "claude haiku 4");
+    }
+
+    #[test]
+    fn test_parse_droid_file_clamps_negative_tokens_and_falls_back_to_mtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("neg.settings.json");
+        std::fs::write(
+            &path,
+            r#"{
+                "model": "claude-sonnet-4",
+                "providerLock": "anthropic",
+                "tokenUsage": {
+                    "inputTokens": -10,
+                    "outputTokens": 1,
+                    "cacheCreationTokens": -5,
+                    "cacheReadTokens": -3,
+                    "thinkingTokens": -2
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let messages = parse_droid_file(&path);
+        assert_eq!(messages.len(), 1);
+        let m = &messages[0];
+        assert_eq!(m.tokens.input, 0);
+        assert_eq!(m.tokens.output, 1);
+        assert_eq!(m.tokens.cache_write, 0);
+        assert_eq!(m.tokens.cache_read, 0);
+        assert_eq!(m.tokens.reasoning, 0);
+        // Without providerLockTimestamp, we fall back to file mtime.
+        assert!(m.timestamp > 0);
+    }
+
+    #[test]
     fn test_parse_droid_settings_structure() {
         let json = r#"{
             "model": "custom:Claude-Opus-4.5-Thinking-[Anthropic]-0",

@@ -152,6 +152,7 @@ pub fn parse_kilo_sqlite_with_fallback(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::Connection;
 
     #[test]
     fn test_parse_kilo_message_structure() {
@@ -175,5 +176,358 @@ mod tests {
         assert_eq!(msg.role, "assistant");
         assert_eq!(msg.cost, Some(0.15));
         assert_eq!(msg.model_id, Some("minimax/m2.5".to_string()));
+    }
+
+    fn setup_kilo_db(path: &Path) -> Connection {
+        let conn = Connection::open(path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE message (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                data TEXT NOT NULL
+            );",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn insert_message(conn: &Connection, id: &str, session: &str, data: &str) {
+        conn.execute(
+            "INSERT INTO message (id, session_id, data) VALUES (?1, ?2, ?3)",
+            rusqlite::params![id, session, data],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_parse_kilo_sqlite_happy_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("kilo.db");
+        let conn = setup_kilo_db(&db);
+        insert_message(
+            &conn,
+            "m1",
+            "s1",
+            r#"{
+                "session_id": "s1",
+                "role": "assistant",
+                "modelID": "claude-sonnet-4",
+                "providerID": "anthropic",
+                "cost": 0.5,
+                "tokens": {
+                    "input": 100,
+                    "output": 50,
+                    "reasoning": 10,
+                    "cache": {"read": 20, "write": 5}
+                },
+                "time": {"created": 1700000000000.0}
+            }"#,
+        );
+        drop(conn);
+
+        let messages = parse_kilo_sqlite(&db);
+        assert_eq!(messages.len(), 1);
+        let m = &messages[0];
+        assert_eq!(m.client, "kilo");
+        assert_eq!(m.model_id, "claude-sonnet-4");
+        assert_eq!(m.provider_id, "anthropic");
+        assert_eq!(m.session_id, "s1");
+        assert_eq!(m.tokens.input, 100);
+        assert_eq!(m.tokens.output, 50);
+        assert_eq!(m.tokens.reasoning, 10);
+        assert_eq!(m.tokens.cache_read, 20);
+        assert_eq!(m.tokens.cache_write, 5);
+        assert_eq!(m.cost, 0.5);
+        assert_eq!(m.timestamp, 1700000000000);
+    }
+
+    #[test]
+    fn test_parse_kilo_sqlite_returns_empty_for_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("does-not-exist.db");
+        assert!(parse_kilo_sqlite(&missing).is_empty());
+    }
+
+    #[test]
+    fn test_parse_kilo_sqlite_filters_user_messages_via_sql() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("kilo.db");
+        let conn = setup_kilo_db(&db);
+        // user message — the SQL WHERE json_extract role='assistant' filters it.
+        insert_message(
+            &conn,
+            "u1",
+            "s1",
+            r#"{
+                "role": "user",
+                "modelID": "whatever",
+                "tokens": {
+                    "input": 1, "output": 1,
+                    "cache": {"read": 0, "write": 0}
+                }
+            }"#,
+        );
+        // assistant message without tokens → filtered by SQL.
+        insert_message(
+            &conn,
+            "a1",
+            "s1",
+            r#"{
+                "role": "assistant",
+                "modelID": "whatever"
+            }"#,
+        );
+        drop(conn);
+
+        assert!(parse_kilo_sqlite(&db).is_empty());
+    }
+
+    #[test]
+    fn test_parse_kilo_sqlite_skips_rows_without_model_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("kilo.db");
+        let conn = setup_kilo_db(&db);
+        insert_message(
+            &conn,
+            "m1",
+            "s1",
+            r#"{
+                "role": "assistant",
+                "providerID": "anthropic",
+                "tokens": {
+                    "input": 1, "output": 1,
+                    "cache": {"read": 0, "write": 0}
+                },
+                "time": {"created": 1700000000000.0}
+            }"#,
+        );
+        drop(conn);
+        assert!(parse_kilo_sqlite(&db).is_empty());
+    }
+
+    #[test]
+    fn test_parse_kilo_sqlite_uses_fallback_timestamp_when_time_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("kilo.db");
+        let conn = setup_kilo_db(&db);
+        insert_message(
+            &conn,
+            "m1",
+            "s1",
+            r#"{
+                "role": "assistant",
+                "modelID": "claude-sonnet-4",
+                "tokens": {
+                    "input": 1, "output": 1,
+                    "cache": {"read": 0, "write": 0}
+                }
+            }"#,
+        );
+        drop(conn);
+
+        let messages = parse_kilo_sqlite_with_fallback(&db, 4242);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].timestamp, 4242);
+    }
+
+    #[test]
+    fn test_parse_kilo_sqlite_clamps_negative_tokens_to_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("kilo.db");
+        let conn = setup_kilo_db(&db);
+        insert_message(
+            &conn,
+            "m1",
+            "s1",
+            r#"{
+                "role": "assistant",
+                "modelID": "claude-sonnet-4",
+                "cost": -2.0,
+                "tokens": {
+                    "input": -10, "output": -5, "reasoning": -1,
+                    "cache": {"read": -3, "write": -2}
+                },
+                "time": {"created": 1700000000000.0}
+            }"#,
+        );
+        drop(conn);
+
+        let messages = parse_kilo_sqlite(&db);
+        assert_eq!(messages.len(), 1);
+        let m = &messages[0];
+        assert_eq!(m.tokens.input, 0);
+        assert_eq!(m.tokens.output, 0);
+        assert_eq!(m.tokens.reasoning, 0);
+        assert_eq!(m.tokens.cache_read, 0);
+        assert_eq!(m.tokens.cache_write, 0);
+        assert_eq!(m.cost, 0.0);
+    }
+
+    #[test]
+    fn test_parse_kilo_sqlite_defaults_session_id_to_unknown() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("kilo.db");
+        let conn = setup_kilo_db(&db);
+        insert_message(
+            &conn,
+            "m1",
+            "s1",
+            r#"{
+                "role": "assistant",
+                "modelID": "claude-sonnet-4",
+                "tokens": {
+                    "input": 1, "output": 1,
+                    "cache": {"read": 0, "write": 0}
+                },
+                "time": {"created": 1700000000000.0}
+            }"#,
+        );
+        drop(conn);
+        let messages = parse_kilo_sqlite(&db);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].session_id, "unknown");
+    }
+
+    #[test]
+    fn test_parse_kilo_sqlite_prefers_agent_over_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("kilo.db");
+        let conn = setup_kilo_db(&db);
+        insert_message(
+            &conn,
+            "m1",
+            "s1",
+            r#"{
+                "session_id": "s1",
+                "role": "assistant",
+                "modelID": "claude-sonnet-4",
+                "agent": "explorer",
+                "mode": "chat",
+                "tokens": {
+                    "input": 1, "output": 1,
+                    "cache": {"read": 0, "write": 0}
+                },
+                "time": {"created": 1700000000000.0}
+            }"#,
+        );
+        // mode-only fallback
+        insert_message(
+            &conn,
+            "m2",
+            "s2",
+            r#"{
+                "session_id": "s2",
+                "role": "assistant",
+                "modelID": "claude-sonnet-4",
+                "mode": "only-mode",
+                "tokens": {
+                    "input": 1, "output": 1,
+                    "cache": {"read": 0, "write": 0}
+                },
+                "time": {"created": 1700000000000.0}
+            }"#,
+        );
+        drop(conn);
+
+        let messages = parse_kilo_sqlite(&db);
+        assert_eq!(messages.len(), 2);
+        let agents: Vec<_> = messages.iter().map(|m| m.agent.clone()).collect();
+        assert!(agents.contains(&Some("explorer".to_string())));
+        assert!(agents.contains(&Some("only-mode".to_string())));
+    }
+
+    #[test]
+    fn test_parse_kilo_sqlite_infers_provider_from_model_when_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("kilo.db");
+        let conn = setup_kilo_db(&db);
+        insert_message(
+            &conn,
+            "m1",
+            "s1",
+            r#"{
+                "session_id": "s1",
+                "role": "assistant",
+                "modelID": "claude-sonnet-4",
+                "tokens": {
+                    "input": 1, "output": 1,
+                    "cache": {"read": 0, "write": 0}
+                },
+                "time": {"created": 1700000000000.0}
+            }"#,
+        );
+        drop(conn);
+        let messages = parse_kilo_sqlite(&db);
+        assert_eq!(messages.len(), 1);
+        // inferred_provider_from_model maps claude-* to anthropic.
+        assert_eq!(messages[0].provider_id, "anthropic");
+    }
+
+    #[test]
+    fn test_parse_kilo_sqlite_defaults_provider_to_kilo_for_unknown_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("kilo.db");
+        let conn = setup_kilo_db(&db);
+        insert_message(
+            &conn,
+            "m1",
+            "s1",
+            r#"{
+                "session_id": "s1",
+                "role": "assistant",
+                "modelID": "totally-unknown-model-xyz",
+                "tokens": {
+                    "input": 1, "output": 1,
+                    "cache": {"read": 0, "write": 0}
+                },
+                "time": {"created": 1700000000000.0}
+            }"#,
+        );
+        drop(conn);
+        let messages = parse_kilo_sqlite(&db);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].provider_id, "kilo");
+    }
+
+    #[test]
+    fn test_parse_kilo_sqlite_skips_malformed_json_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("kilo.db");
+        let conn = setup_kilo_db(&db);
+        // Row must still pass the SQL WHERE (role=assistant + tokens IS NOT
+        // NULL) but simd_json fails on this structure because "cache" is a
+        // string, not an object. The parser should silently skip it.
+        insert_message(
+            &conn,
+            "m1",
+            "s1",
+            r#"{
+                "role": "assistant",
+                "modelID": "claude-sonnet-4",
+                "tokens": {
+                    "input": 1, "output": 1, "cache": "not-an-object"
+                }
+            }"#,
+        );
+        // A valid sibling proves we only skip the bad row, not the whole batch.
+        insert_message(
+            &conn,
+            "m2",
+            "s1",
+            r#"{
+                "role": "assistant",
+                "modelID": "claude-sonnet-4",
+                "tokens": {
+                    "input": 2, "output": 2,
+                    "cache": {"read": 0, "write": 0}
+                },
+                "time": {"created": 1700000000000.0}
+            }"#,
+        );
+        drop(conn);
+
+        let messages = parse_kilo_sqlite(&db);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].tokens.input, 2);
     }
 }
