@@ -214,6 +214,29 @@ fn lock_age(path: &Path, state: Option<SourceIdLockState>) -> Duration {
     }
 }
 
+// On non-Windows targets the helper is only exercised by unit tests; silence
+// the unused-fn lint so `cargo build` stays clean everywhere.
+#[cfg_attr(not(windows), allow(dead_code))]
+/// Given the stdout of `tasklist /FI "PID eq N" /FO CSV /NH`, decide
+/// whether a matching process exists.
+///
+/// `/FI "PID eq N"` filters server-side. When no PID matches, tasklist
+/// still emits a localized banner on stdout — e.g. English:
+/// `INFO: No tasks are running which match the specified criteria.`
+/// — so "any non-empty line" over-matches. Because `/FO CSV` wraps
+/// every field of a data row in double quotes, a CSV data row always
+/// starts with `"`, while the banner never does (and the banner is
+/// locale-dependent, so we can't string-match it directly). Gating on
+/// `line.trim().starts_with('"')` is both locale-agnostic and
+/// robust to process names that contain commas (which would break a
+/// naive `split(',')` attempt to read the PID column).
+fn tasklist_output_indicates_match(stdout: &str) -> bool {
+    stdout.lines().any(|line| {
+        let trimmed = line.trim();
+        !trimmed.is_empty() && trimmed.starts_with('"')
+    })
+}
+
 fn lock_owner_is_alive(pid: u32) -> Option<bool> {
     #[cfg(unix)]
     {
@@ -226,12 +249,6 @@ fn lock_owner_is_alive(pid: u32) -> Option<bool> {
 
     #[cfg(windows)]
     {
-        // Locale-agnostic: `tasklist /FI "PID eq N" /FO CSV /NH` already
-        // filters server-side on PID. The filter emits exactly 0 rows when
-        // no process matches, and 1 row when one does. We only need to
-        // detect whether any non-empty CSV row came back — we do NOT try
-        // to parse the PID back out, because process names can legitimately
-        // contain commas and a naive split(',') would misread the column.
         let output = std::process::Command::new("tasklist")
             .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
             .output();
@@ -239,8 +256,7 @@ fn lock_owner_is_alive(pid: u32) -> Option<bool> {
         match output {
             Ok(output) if output.status.success() => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                let matched = stdout.lines().any(|line| !line.trim().is_empty());
-                Some(matched)
+                Some(tasklist_output_indicates_match(&stdout))
             }
             Ok(_) => None,
             Err(_) => None,
@@ -249,6 +265,7 @@ fn lock_owner_is_alive(pid: u32) -> Option<bool> {
 
     #[cfg(not(any(unix, windows)))]
     {
+        let _ = pid;
         None
     }
 }
@@ -1161,6 +1178,57 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let missing = temp.path().join("does-not-exist.lock");
         assert_eq!(lock_age(&missing, None), SOURCE_ID_LOCK_FORCE_STALE_AFTER);
+    }
+
+    // =====================================================================
+    // tasklist_output_indicates_match (Windows PID-probe helper,
+    // compiled on all platforms for testability)
+    // =====================================================================
+
+    #[test]
+    fn test_tasklist_output_indicates_match_matches_csv_data_row() {
+        let stdout = "\"chrome.exe\",\"1234\",\"Console\",\"1\",\"256,000 K\"\n";
+        assert!(tasklist_output_indicates_match(stdout));
+    }
+
+    #[test]
+    fn test_tasklist_output_indicates_match_rejects_english_info_banner() {
+        // This is the exact failure mode of the earlier naive
+        // "any non-empty line" check — tasklist prints the banner even
+        // when the PID filter found nothing.
+        let stdout = "INFO: No tasks are running which match the specified criteria.\n";
+        assert!(!tasklist_output_indicates_match(stdout));
+    }
+
+    #[test]
+    fn test_tasklist_output_indicates_match_rejects_localized_info_banner() {
+        // Non-English Windows banners don't start with "INFO:" either, but
+        // they still don't start with a double quote. The CSV-data
+        // heuristic is locale-agnostic precisely because /FO CSV wraps
+        // fields in quotes deterministically.
+        let stdout = "정보: 지정된 조건과 일치하는 태스크가 실행되고 있지 않습니다.\n";
+        assert!(!tasklist_output_indicates_match(stdout));
+    }
+
+    #[test]
+    fn test_tasklist_output_indicates_match_rejects_empty_output() {
+        assert!(!tasklist_output_indicates_match(""));
+        assert!(!tasklist_output_indicates_match("\n\n"));
+    }
+
+    #[test]
+    fn test_tasklist_output_indicates_match_tolerates_process_name_with_commas() {
+        // A commaed image name is CSV-quoted and the row still starts
+        // with a double quote, so the heuristic identifies the match
+        // without needing to parse the PID column.
+        let stdout = "\"evil,name.exe\",\"4242\",\"Services\",\"0\",\"1,024 K\"\n";
+        assert!(tasklist_output_indicates_match(stdout));
+    }
+
+    #[test]
+    fn test_tasklist_output_indicates_match_ignores_blank_lines_around_data() {
+        let stdout = "\n\"chrome.exe\",\"1234\",\"Console\",\"1\",\"256,000 K\"\n\n";
+        assert!(tasklist_output_indicates_match(stdout));
     }
 
     // =====================================================================
