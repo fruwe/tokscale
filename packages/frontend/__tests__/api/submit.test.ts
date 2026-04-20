@@ -439,16 +439,10 @@ describe('POST /api/submit - Client-Level Merge', () => {
       expect(opencodeInDay).toBeDefined();
     });
 
-    it('should handle concurrent submissions without data loss', () => {
-      // This is tested at the database level with .for('update') locks
-      // Here we just verify the concept
-      const submission1Clients = ['claude'];
-      const submission2Clients = ['cursor'];
-      
-      // Both should be present after sequential processing
-      const finalClients = new Set([...submission1Clients, ...submission2Clients]);
-      expect(finalClients.size).toBe(2);
-    });
+    // Concurrent-submit correctness is exercised in dbHelpers.test.ts
+    // (resolveSubmissionScope) and submitAuth.test.ts (409 path). The
+    // actual DB-level races are guarded by SELECT ... FOR UPDATE and the
+    // onConflictDoNothing fallback in the route handler.
 
     it('should treat contribution clients as submitted even if summary.clients is incomplete', () => {
       const data = createMockSubmissionData({

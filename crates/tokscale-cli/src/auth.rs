@@ -197,11 +197,13 @@ fn lock_age(path: &Path, state: Option<SourceIdLockState>) -> Duration {
         return Duration::from_millis(age_ms.min(u64::MAX as u128) as u64);
     }
 
-    fs::metadata(path)
-        .and_then(|metadata| metadata.modified())
-        .ok()
-        .and_then(|modified| modified.elapsed().ok())
-        .unwrap_or_default()
+    // Malformed lock file (no parseable state). If mtime is unreadable or in
+    // the future (clock skew), treat it as stale so we recycle instead of
+    // stalling on the per-iteration retry up to FORCE_STALE_AFTER.
+    match fs::metadata(path).and_then(|metadata| metadata.modified()) {
+        Ok(modified) => modified.elapsed().unwrap_or(SOURCE_ID_LOCK_FORCE_STALE_AFTER),
+        Err(_) => SOURCE_ID_LOCK_FORCE_STALE_AFTER,
+    }
 }
 
 fn lock_owner_is_alive(pid: u32) -> Option<bool> {
@@ -216,14 +218,24 @@ fn lock_owner_is_alive(pid: u32) -> Option<bool> {
 
     #[cfg(windows)]
     {
+        // Locale-agnostic parse: tasklist /FO CSV /NH emits one row per
+        // matching process with the PID in the second CSV column. "No tasks
+        // are running" is localized text and cannot be string-matched safely,
+        // so we check the structured output instead.
         let output = std::process::Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {}", pid)])
+            .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
             .output();
 
         match output {
             Ok(output) if output.status.success() => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                Some(stdout.contains(&pid.to_string()) && !stdout.contains("No tasks are running"))
+                let pid_str = pid.to_string();
+                let matched = stdout.lines().any(|line| {
+                    line.split(',').nth(1).is_some_and(|col| {
+                        col.trim().trim_matches('"') == pid_str
+                    })
+                });
+                Some(matched)
             }
             Ok(_) => None,
             Err(_) => None,

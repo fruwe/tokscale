@@ -159,10 +159,12 @@ vi.mock("drizzle-orm", () => ({
 type ModuleExports = typeof import("../../src/app/api/submit/route");
 
 let POST: ModuleExports["POST"];
+let SourceIdentityRequiredError: ModuleExports["SourceIdentityRequiredError"];
 
 beforeAll(async () => {
   const routeModule = await import("../../src/app/api/submit/route");
   POST = routeModule.POST;
+  SourceIdentityRequiredError = routeModule.SourceIdentityRequiredError;
 });
 
 beforeEach(() => {
@@ -314,9 +316,7 @@ describe("POST /api/submit auth path", () => {
       errors: [],
       warnings: [],
     });
-    mockState.db.transaction.mockRejectedValue(
-      new Error("Source identity is required for accounts with source-scoped submissions")
-    );
+    mockState.db.transaction.mockRejectedValue(new SourceIdentityRequiredError());
 
     const response = await POST(
       new Request("http://localhost:3000/api/submit", {
@@ -332,6 +332,7 @@ describe("POST /api/submit auth path", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
       error: "Source identity is required for accounts with source-scoped submissions",
+      hint: "Upgrade the CLI or set TOKSCALE_SOURCE_ID before submitting from this machine.",
     });
   });
 
@@ -434,21 +435,11 @@ describe("POST /api/submit auth path", () => {
     mockState.mergeTimestampMs.mockReturnValue(null);
     mockState.resolveSubmissionScope.mockReturnValue({ kind: "create" });
 
-    mockState.pushSelectResult([
-      {
-        totalTokens: 1500,
-        totalCost: "1.5000",
-        dateStart: "2024-12-01",
-        dateEnd: "2024-12-01",
-      },
-    ]);
-    mockState.pushSelectResult([{ activeDays: 1 }]);
-    mockState.pushSelectResult([{ sourcesUsed: ["claude"] }]);
     mockState.db.transaction.mockImplementation(async (callback) => {
       const selectResults = [
-        [],
-        [{ id: "submission-1" }],
-        [],
+        [], // 3a: scope select (.for → builder, awaited via .then)
+        [{ id: "submission-1" }], // 3a fallback: .for(...).limit(1) → consumed by .limit
+        [], // 3b: daily breakdown FOR UPDATE (.for → builder, awaited via .then)
         [
           {
             totalTokens: 1500,
@@ -460,8 +451,18 @@ describe("POST /api/submit auth path", () => {
             activeDays: 1,
             rowCount: 1,
           },
-        ],
-        [{ sourceBreakdown: mockSourceBreakdown }],
+        ], // 3d: aggregates
+        [{ sourceBreakdown: mockSourceBreakdown }], // 3d: allDays
+        [
+          {
+            totalTokens: 1500,
+            totalCost: "1.5000",
+            dateStart: "2024-12-01",
+            dateEnd: "2024-12-01",
+          },
+        ], // metrics: user aggregates
+        [{ activeDays: 1 }], // metrics: user day aggregates
+        [{ sourcesUsed: ["claude"] }], // metrics: user submissions
       ];
       const tx = {
         update: vi.fn(() => {
@@ -475,9 +476,13 @@ describe("POST /api/submit auth path", () => {
         select: vi.fn(() => {
           const builder = {
             from: vi.fn(() => builder),
+            innerJoin: vi.fn(() => builder),
             where: vi.fn(() => builder),
             limit: vi.fn(async () => selectResults.shift() ?? []),
-            for: vi.fn(async () => selectResults.shift() ?? []),
+            // .for() is chainable — drizzle allows `.for(...).limit(1)` as
+            // well as terminal `.for(...)`. Return the builder so chained
+            // calls work; terminal `.for(...)` gets consumed via .then.
+            for: vi.fn(() => builder),
             then: (resolve: (value: unknown) => unknown) =>
               resolve(selectResults.shift() ?? []),
           };

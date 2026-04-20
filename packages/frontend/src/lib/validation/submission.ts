@@ -338,12 +338,16 @@ export function validateSubmission(data: unknown): ValidationResult {
 }
 
 /**
- * Generate a hash for the submission data (for deduplication)
- * 
- * CHANGED for client-level merge:
- * - Hash is now based on clients + date range (not totals)
- * - Totals change after merge, so they can't be in the hash
- * - This hash identifies "what clients and dates are being submitted"
+ * Generate an informational fingerprint of a submission payload.
+ *
+ * The hash is stored on submissions.submissionHash for diagnostic purposes
+ * only — the database uniqueness constraint that previously consumed it was
+ * dropped in migration 0005 when the schema moved to source-scoped rows.
+ * Callers must NOT rely on collisions being rejected; duplicates across
+ * users or sources are allowed and expected.
+ *
+ * Encodes "what clients and dates are being submitted," not totals
+ * (which change on merge and would defeat the fingerprint).
  */
 export function generateSubmissionHash(data: SubmissionData): string {
   // Sort contributions by date to ensure deterministic hash

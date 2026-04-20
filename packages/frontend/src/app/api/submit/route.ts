@@ -18,8 +18,18 @@ import {
   type ClientBreakdownData,
 } from "@/lib/db/helpers";
 
-const SOURCE_IDENTITY_REQUIRED_ERROR =
+export const SOURCE_IDENTITY_REQUIRED_MESSAGE =
   "Source identity is required for accounts with source-scoped submissions";
+
+export const SOURCE_IDENTITY_REQUIRED_HINT =
+  "Upgrade the CLI or set TOKSCALE_SOURCE_ID before submitting from this machine.";
+
+export class SourceIdentityRequiredError extends Error {
+  constructor() {
+    super(SOURCE_IDENTITY_REQUIRED_MESSAGE);
+    this.name = "SourceIdentityRequiredError";
+  }
+}
 
 function normalizeSubmissionData(data: unknown): void {
   if (!data || typeof data !== "object") return;
@@ -55,10 +65,12 @@ function normalizeOptionalString(value: string | undefined): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
-async function loadUserSubmitMetrics(userId: string) {
+type TxClient = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function loadUserSubmitMetrics(tx: TxClient, userId: string) {
   const [userAggregatesRows, userDayAggregatesRows, userSubmissionsRows] =
     await Promise.all([
-      db
+      tx
         .select({
           totalTokens: sql<number>`COALESCE(SUM(${submissions.totalTokens}), 0)::bigint`,
           totalCost: sql<string>`COALESCE(SUM(CAST(${submissions.totalCost} AS DECIMAL(12,4))), 0)::text`,
@@ -67,14 +79,14 @@ async function loadUserSubmitMetrics(userId: string) {
         })
         .from(submissions)
         .where(eq(submissions.userId, userId)),
-      db
+      tx
         .select({
           activeDays: sql<number>`COUNT(DISTINCT CASE WHEN ${dailyBreakdown.tokens} > 0 THEN ${dailyBreakdown.date} END)::int`,
         })
         .from(dailyBreakdown)
         .innerJoin(submissions, eq(dailyBreakdown.submissionId, submissions.id))
         .where(eq(submissions.userId, userId)),
-      db
+      tx
         .select({
           sourcesUsed: submissions.sourcesUsed,
         })
@@ -229,7 +241,7 @@ export async function POST(request: Request) {
       );
 
       if (scopeResolution.kind === "rejectMissingSourceIdentity") {
-        throw new Error(SOURCE_IDENTITY_REQUIRED_ERROR);
+        throw new SourceIdentityRequiredError();
       }
 
       if (scopeResolution.kind === "existing") {
@@ -278,9 +290,14 @@ export async function POST(request: Request) {
                     isNull(submissions.sourceId)
                   )
             )
+            .for("update")
             .limit(1);
 
           if (!conflictedSubmission) {
+            console.error(
+              "Submission row was not found after insert conflict",
+              { userId: tokenRecord.userId, sourceId }
+            );
             throw new Error("Submission row was not found after insert conflict");
           }
 
@@ -520,13 +537,16 @@ export async function POST(request: Request) {
         .set(submissionUpdate)
         .where(eq(submissions.id, submissionId));
 
+      const metrics = await loadUserSubmitMetrics(tx, tokenRecord.userId);
+
       return {
         submissionId,
         isNewSubmission,
+        metrics,
       };
     });
 
-    const metrics = await loadUserSubmitMetrics(tokenRecord.userId);
+    const { metrics } = result;
 
     try {
       revalidateTag("leaderboard", "max");
@@ -546,12 +566,12 @@ export async function POST(request: Request) {
       warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
     });
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === SOURCE_IDENTITY_REQUIRED_ERROR
-    ) {
+    if (error instanceof SourceIdentityRequiredError) {
       return NextResponse.json(
-        { error: SOURCE_IDENTITY_REQUIRED_ERROR },
+        {
+          error: SOURCE_IDENTITY_REQUIRED_MESSAGE,
+          hint: SOURCE_IDENTITY_REQUIRED_HINT,
+        },
         { status: 409 }
       );
     }

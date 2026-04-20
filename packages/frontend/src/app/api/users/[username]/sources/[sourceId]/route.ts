@@ -5,6 +5,7 @@ import {
   aggregateModelUsage,
   createAccumulator,
   decodeSourceParam,
+  InvalidSourceParamError,
   mergeSourceContribution,
   normalizeClientId,
   sourceKey,
@@ -234,6 +235,12 @@ export async function GET(_request: Request, { params }: RouteParams) {
       },
     });
   } catch (error) {
+    if (error instanceof InvalidSourceParamError) {
+      return NextResponse.json(
+        { error: "Invalid source id" },
+        { status: 400 }
+      );
+    }
     console.error("User source detail error:", error);
     return NextResponse.json(
       { error: "Failed to fetch user source" },

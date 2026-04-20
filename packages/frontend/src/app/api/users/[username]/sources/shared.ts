@@ -61,10 +61,25 @@ export function normalizeClientId(id: string): string {
   return LEGACY_CLIENT_ALIASES[id] ?? id;
 }
 
+export class InvalidSourceParamError extends Error {
+  constructor(message = "Invalid source id") {
+    super(message);
+    this.name = "InvalidSourceParamError";
+  }
+}
+
 export function sourceKey(sourceId: string | null): string {
   return sourceId == null
     ? LEGACY_SOURCE_PARAM
     : `${SOURCE_KEY_PREFIX}${encodeURIComponent(sourceId)}`;
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new InvalidSourceParamError();
+  }
 }
 
 export function decodeSourceParam(sourceIdOrLegacy: string): string | null {
@@ -73,10 +88,10 @@ export function decodeSourceParam(sourceIdOrLegacy: string): string | null {
   }
 
   if (!sourceIdOrLegacy.startsWith(SOURCE_KEY_PREFIX)) {
-    return decodeURIComponent(sourceIdOrLegacy);
+    return safeDecodeURIComponent(sourceIdOrLegacy);
   }
 
-  return decodeURIComponent(sourceIdOrLegacy.slice(SOURCE_KEY_PREFIX.length));
+  return safeDecodeURIComponent(sourceIdOrLegacy.slice(SOURCE_KEY_PREFIX.length));
 }
 
 export function toIsoString(value: Date | string | null | undefined): string | null {

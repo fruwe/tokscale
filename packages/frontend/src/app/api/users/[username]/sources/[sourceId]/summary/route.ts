@@ -4,6 +4,7 @@ import { db, dailyBreakdown, submissions, users } from "@/lib/db";
 import {
   createAccumulator,
   decodeSourceParam,
+  InvalidSourceParamError,
   mergeSourceContribution,
   sourceKey,
   toIsoString,
@@ -174,6 +175,12 @@ export async function GET(_request: Request, { params }: RouteParams) {
       },
     });
   } catch (error) {
+    if (error instanceof InvalidSourceParamError) {
+      return NextResponse.json(
+        { error: "Invalid source id" },
+        { status: 400 }
+      );
+    }
     console.error("User source summary error:", error);
     return NextResponse.json(
       { error: "Failed to fetch user source summary" },
