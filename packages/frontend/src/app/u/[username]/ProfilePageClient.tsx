@@ -363,146 +363,174 @@ export default function ProfilePageClient({
           <ProfileTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
           {activeTab === "activity" && (
-            graphData ? (
-              <ActivitySection>
-                <ProfileActivity data={graphData} />
-                <ProfileStats
-                  stats={stats}
-                  favoriteModel={
-                    data.modelUsage?.reduce((max, current) => current.cost > max.cost ? current : max, data.modelUsage[0])?.model
-                  }
-                />
-              </ActivitySection>
-            ) : <ProfileEmptyActivity />
+            <div
+              role="tabpanel"
+              id="tabpanel-activity"
+              aria-labelledby="tab-activity"
+            >
+              {graphData ? (
+                <ActivitySection>
+                  <ProfileActivity data={graphData} />
+                  <ProfileStats
+                    stats={stats}
+                    favoriteModel={
+                      data.modelUsage?.reduce((max, current) => current.cost > max.cost ? current : max, data.modelUsage[0])?.model
+                    }
+                  />
+                </ActivitySection>
+              ) : <ProfileEmptyActivity />}
+            </div>
           )}
-          {activeTab === "breakdown" && <TokenBreakdown stats={stats} />}
-          {activeTab === "models" && <ProfileModels models={data.models} modelUsage={data.modelUsage} />}
+          {activeTab === "breakdown" && (
+            <div
+              role="tabpanel"
+              id="tabpanel-breakdown"
+              aria-labelledby="tab-breakdown"
+            >
+              <TokenBreakdown stats={stats} />
+            </div>
+          )}
+          {activeTab === "models" && (
+            <div
+              role="tabpanel"
+              id="tabpanel-models"
+              aria-labelledby="tab-models"
+            >
+              <ProfileModels models={data.models} modelUsage={data.modelUsage} />
+            </div>
+          )}
           {activeTab === "sources" && (
-            initialSources.length > 0 ? (
-              <SourcesSection>
-                <SourcesGrid>
-                  {initialSources.map((source) => {
-                    const isSelected = source.sourceKey === selectedSourceKey;
+            <div
+              role="tabpanel"
+              id="tabpanel-sources"
+              aria-labelledby="tab-sources"
+            >
+              {initialSources.length > 0 ? (
+                <SourcesSection>
+                  <SourcesGrid>
+                    {initialSources.map((source) => {
+                      const isSelected = source.sourceKey === selectedSourceKey;
 
-                    return (
-                      <SourceCard
-                        key={source.sourceKey}
-                        $selected={isSelected}
-                        onClick={() => {
-                          setSelectedSourceKey(source.sourceKey);
-                          setLoadingSourceKey(
-                            sourceDetailCache[source.sourceKey] ? null : source.sourceKey
-                          );
-                        }}
-                        type="button"
-                      >
-                        <SourceCardHeader>
-                          <SourceCardTitle>{source.sourceName}</SourceCardTitle>
-                          <SourceCardUpdated>
-                            {source.updatedAt
-                              ? new Date(source.updatedAt).toLocaleDateString()
-                              : "No updates"}
-                          </SourceCardUpdated>
-                        </SourceCardHeader>
-                        <SourceCardValue>{formatNumber(source.stats.totalTokens)}</SourceCardValue>
-                        <SourceCardSubValue>{formatCurrency(source.stats.totalCost)}</SourceCardSubValue>
-                        <SourceCardMeta>
-                          <span>{source.stats.submissionCount} submits</span>
-                          <span>{source.stats.activeDays} active days</span>
-                        </SourceCardMeta>
-                      </SourceCard>
-                    );
-                  })}
-                </SourcesGrid>
+                      return (
+                        <SourceCard
+                          key={source.sourceKey}
+                          $selected={isSelected}
+                          onClick={() => {
+                            setSelectedSourceKey(source.sourceKey);
+                            setLoadingSourceKey(
+                              sourceDetailCache[source.sourceKey] ? null : source.sourceKey
+                            );
+                          }}
+                          type="button"
+                        >
+                          <SourceCardHeader>
+                            <SourceCardTitle>{source.sourceName}</SourceCardTitle>
+                            <SourceCardUpdated>
+                              {source.updatedAt
+                                ? new Date(source.updatedAt).toLocaleDateString()
+                                : "No updates"}
+                            </SourceCardUpdated>
+                          </SourceCardHeader>
+                          <SourceCardValue>{formatNumber(source.stats.totalTokens)}</SourceCardValue>
+                          <SourceCardSubValue>{formatCurrency(source.stats.totalCost)}</SourceCardSubValue>
+                          <SourceCardMeta>
+                            <span>{source.stats.submissionCount} submits</span>
+                            <span>{source.stats.activeDays} active days</span>
+                          </SourceCardMeta>
+                        </SourceCard>
+                      );
+                    })}
+                  </SourcesGrid>
 
-                {selectedSourceSummary && (
-                  <SelectedSourceSection>
-                    <SelectedSourceHeader>
-                      <SelectedSourceTitle>{selectedSourceSummary.sourceName}</SelectedSourceTitle>
-                      <SelectedSourceSubtitle>
-                        {selectedSourceSummary.sourceId ?? "legacy"} ·{" "}
-                        {selectedSourceSummary.updatedAt
-                          ? `Updated ${new Date(selectedSourceSummary.updatedAt).toLocaleString()}`
-                          : "No updates yet"}
-                      </SelectedSourceSubtitle>
-                    </SelectedSourceHeader>
+                  {selectedSourceSummary && (
+                    <SelectedSourceSection>
+                      <SelectedSourceHeader>
+                        <SelectedSourceTitle>{selectedSourceSummary.sourceName}</SelectedSourceTitle>
+                        <SelectedSourceSubtitle>
+                          {selectedSourceSummary.sourceId ?? "legacy"} ·{" "}
+                          {selectedSourceSummary.updatedAt
+                            ? `Updated ${new Date(selectedSourceSummary.updatedAt).toLocaleString()}`
+                            : "No updates yet"}
+                        </SelectedSourceSubtitle>
+                      </SelectedSourceHeader>
 
-                    <SourceTagRow>
-                      {selectedSourceSummary.clients.map((client) => (
-                        <SourceTag key={`client-${client}`}>{client}</SourceTag>
-                      ))}
-                      {selectedSourceSummary.models.slice(0, 8).map((model) => (
-                        <SourceTag key={`model-${model}`}>{model}</SourceTag>
-                      ))}
-                    </SourceTagRow>
+                      <SourceTagRow>
+                        {selectedSourceSummary.clients.map((client) => (
+                          <SourceTag key={`client-${client}`}>{client}</SourceTag>
+                        ))}
+                        {selectedSourceSummary.models.slice(0, 8).map((model) => (
+                          <SourceTag key={`model-${model}`}>{model}</SourceTag>
+                        ))}
+                      </SourceTagRow>
 
-                    {selectedSourcePreview && (
-                      <SourcePreviewCard>
-                        <SourcePreviewHeader>
-                          <SourcePreviewTitle>Quick Preview</SourcePreviewTitle>
-                          <SourcePreviewUpdated>
-                            {selectedSourcePreview.updatedAt
-                              ? new Date(selectedSourcePreview.updatedAt).toLocaleDateString()
-                              : "No updates"}
-                          </SourcePreviewUpdated>
-                        </SourcePreviewHeader>
-                        <SourcePreviewGrid>
-                          <SourcePreviewItem>
-                            <SourcePreviewLabel>Top client</SourcePreviewLabel>
-                            <SourcePreviewValue>
-                              {selectedSourcePreview.topClient ?? "—"}
-                            </SourcePreviewValue>
-                          </SourcePreviewItem>
-                          <SourcePreviewItem>
-                            <SourcePreviewLabel>Top model</SourcePreviewLabel>
-                            <SourcePreviewValue>
-                              {selectedSourcePreview.topModel ?? "—"}
-                            </SourcePreviewValue>
-                          </SourcePreviewItem>
-                          <SourcePreviewItem>
-                            <SourcePreviewLabel>Submissions</SourcePreviewLabel>
-                            <SourcePreviewValue>
-                              {selectedSourcePreview.submissionCount}
-                            </SourcePreviewValue>
-                          </SourcePreviewItem>
-                          <SourcePreviewItem>
-                            <SourcePreviewLabel>Active days</SourcePreviewLabel>
-                            <SourcePreviewValue>
-                              {selectedSourcePreview.activeDays}
-                            </SourcePreviewValue>
-                          </SourcePreviewItem>
-                        </SourcePreviewGrid>
-                      </SourcePreviewCard>
-                    )}
+                      {selectedSourcePreview && (
+                        <SourcePreviewCard>
+                          <SourcePreviewHeader>
+                            <SourcePreviewTitle>Quick Preview</SourcePreviewTitle>
+                            <SourcePreviewUpdated>
+                              {selectedSourcePreview.updatedAt
+                                ? new Date(selectedSourcePreview.updatedAt).toLocaleDateString()
+                                : "No updates"}
+                            </SourcePreviewUpdated>
+                          </SourcePreviewHeader>
+                          <SourcePreviewGrid>
+                            <SourcePreviewItem>
+                              <SourcePreviewLabel>Top client</SourcePreviewLabel>
+                              <SourcePreviewValue>
+                                {selectedSourcePreview.topClient ?? "—"}
+                              </SourcePreviewValue>
+                            </SourcePreviewItem>
+                            <SourcePreviewItem>
+                              <SourcePreviewLabel>Top model</SourcePreviewLabel>
+                              <SourcePreviewValue>
+                                {selectedSourcePreview.topModel ?? "—"}
+                              </SourcePreviewValue>
+                            </SourcePreviewItem>
+                            <SourcePreviewItem>
+                              <SourcePreviewLabel>Submissions</SourcePreviewLabel>
+                              <SourcePreviewValue>
+                                {selectedSourcePreview.submissionCount}
+                              </SourcePreviewValue>
+                            </SourcePreviewItem>
+                            <SourcePreviewItem>
+                              <SourcePreviewLabel>Active days</SourcePreviewLabel>
+                              <SourcePreviewValue>
+                                {selectedSourcePreview.activeDays}
+                              </SourcePreviewValue>
+                            </SourcePreviewItem>
+                          </SourcePreviewGrid>
+                        </SourcePreviewCard>
+                      )}
 
-                    {loadingSourceKey === selectedSourceKey && !selectedSource ? (
-                      <SourceLoadingCard>
-                        Loading source details…
-                      </SourceLoadingCard>
-                    ) : selectedSourceGraphData && selectedSource ? (
-                      <ActivitySection>
-                        <ProfileActivity data={selectedSourceGraphData} />
-                        <ProfileStats
-                          stats={selectedSource.stats}
-                          favoriteModel={
-                            selectedSource.modelUsage?.reduce((max, current) =>
-                              current.cost > max.cost ? current : max,
-                            selectedSource.modelUsage[0])?.model
-                          }
-                        />
-                        <TokenBreakdown stats={selectedSource.stats} />
-                        <ProfileModels
-                          models={selectedSource.models}
-                          modelUsage={selectedSource.modelUsage}
-                        />
-                      </ActivitySection>
-                    ) : (
-                      <ProfileEmptyActivity />
-                    )}
-                  </SelectedSourceSection>
-                )}
-              </SourcesSection>
-            ) : <ProfileEmptyActivity />
+                      {loadingSourceKey === selectedSourceKey && !selectedSource ? (
+                        <SourceLoadingCard>
+                          Loading source details…
+                        </SourceLoadingCard>
+                      ) : selectedSourceGraphData && selectedSource ? (
+                        <ActivitySection>
+                          <ProfileActivity data={selectedSourceGraphData} />
+                          <ProfileStats
+                            stats={selectedSource.stats}
+                            favoriteModel={
+                              selectedSource.modelUsage?.reduce((max, current) =>
+                                current.cost > max.cost ? current : max,
+                              selectedSource.modelUsage[0])?.model
+                            }
+                          />
+                          <TokenBreakdown stats={selectedSource.stats} />
+                          <ProfileModels
+                            models={selectedSource.models}
+                            modelUsage={selectedSource.modelUsage}
+                          />
+                        </ActivitySection>
+                      ) : (
+                        <ProfileEmptyActivity />
+                      )}
+                    </SelectedSourceSection>
+                  )}
+                </SourcesSection>
+              ) : <ProfileEmptyActivity />}
+            </div>
           )}
         </ContentWrapper>
       </MainContent>
