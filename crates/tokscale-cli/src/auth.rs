@@ -1332,7 +1332,7 @@ mod tests {
         // Plant a stale lock with an ancient created_at_ms — past the
         // FORCE_STALE threshold, so the acquire loop must reclaim it.
         let ancient = SourceIdLockState {
-            pid: u32::MAX, // Very unlikely to match a real PID on this host.
+            pid: u32::MAX,    // Very unlikely to match a real PID on this host.
             created_at_ms: 1, // epoch-adjacent
         };
         fs::write(&lock_path, serialize_source_id_lock_state(ancient)).unwrap();
@@ -1451,6 +1451,10 @@ mod tests {
     fn test_current_unix_ms_is_in_plausible_range() {
         let now = current_unix_ms();
         // 2025-01-01 UTC = 1735689600000 ms — we expect something later.
-        assert!(now > 1_735_689_600_000, "clock reported unexpected time: {}", now);
+        assert!(
+            now > 1_735_689_600_000,
+            "clock reported unexpected time: {}",
+            now
+        );
     }
 }
