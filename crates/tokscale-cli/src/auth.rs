@@ -1059,4 +1059,398 @@ mod tests {
             env::remove_var("HOME");
         }
     }
+
+    // =====================================================================
+    // Lock state serialization / parsing
+    // =====================================================================
+
+    #[test]
+    fn test_serialize_source_id_lock_state_emits_expected_format() {
+        let state = SourceIdLockState {
+            pid: 4242,
+            created_at_ms: 1_700_000_000_000,
+        };
+        assert_eq!(
+            serialize_source_id_lock_state(state),
+            "pid=4242\ncreated_at_ms=1700000000000\n"
+        );
+    }
+
+    #[test]
+    fn test_parse_source_id_lock_state_round_trips_serialized_output() {
+        let state = SourceIdLockState {
+            pid: 99,
+            created_at_ms: 1_699_999_999_999,
+        };
+        let serialized = serialize_source_id_lock_state(state);
+
+        let parsed = parse_source_id_lock_state(&serialized).unwrap();
+        assert_eq!(parsed, state);
+    }
+
+    #[test]
+    fn test_parse_source_id_lock_state_tolerates_whitespace_and_unknown_keys() {
+        let content = "  pid = 1234  \n  created_at_ms =  42  \nunknown_key=ignored\n";
+        let parsed = parse_source_id_lock_state(content).unwrap();
+        assert_eq!(parsed.pid, 1234);
+        assert_eq!(parsed.created_at_ms, 42);
+    }
+
+    #[test]
+    fn test_parse_source_id_lock_state_returns_none_on_missing_fields() {
+        assert!(parse_source_id_lock_state("pid=1\n").is_none());
+        assert!(parse_source_id_lock_state("created_at_ms=1\n").is_none());
+        assert!(parse_source_id_lock_state("").is_none());
+    }
+
+    #[test]
+    fn test_parse_source_id_lock_state_returns_none_on_malformed_line() {
+        // A line without '=' short-circuits via the `?` on split_once.
+        assert!(parse_source_id_lock_state("garbage\npid=1\ncreated_at_ms=2\n").is_none());
+    }
+
+    // =====================================================================
+    // lock_age
+    // =====================================================================
+
+    #[test]
+    fn test_lock_age_from_state_clamps_future_created_at_to_zero() {
+        // If the lock claims a created_at in the future (clock skew on a
+        // cross-machine file system), saturating_sub makes age = 0. That's
+        // the "treat as fresh" branch — the stale checker takes over via
+        // the force-stale timer.
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("irrelevant.lock");
+        let future_ms = current_unix_ms() + 10_000;
+        let state = SourceIdLockState {
+            pid: 1,
+            created_at_ms: future_ms,
+        };
+        let age = lock_age(&path, Some(state));
+        assert_eq!(age, Duration::ZERO);
+    }
+
+    #[test]
+    fn test_lock_age_from_state_returns_elapsed_ms_for_past_created_at() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("irrelevant.lock");
+        let past_ms = current_unix_ms().saturating_sub(250);
+        let state = SourceIdLockState {
+            pid: 1,
+            created_at_ms: past_ms,
+        };
+        let age = lock_age(&path, Some(state));
+        assert!(
+            age >= Duration::from_millis(200) && age < Duration::from_secs(5),
+            "unexpected age: {:?}",
+            age
+        );
+    }
+
+    #[test]
+    fn test_lock_age_without_state_returns_force_stale_when_metadata_missing() {
+        let temp = TempDir::new().unwrap();
+        let missing = temp.path().join("does-not-exist.lock");
+        assert_eq!(lock_age(&missing, None), SOURCE_ID_LOCK_FORCE_STALE_AFTER);
+    }
+
+    // =====================================================================
+    // read_source_id_lock_state / remove_source_id_lock_if_matches
+    // =====================================================================
+
+    #[test]
+    fn test_read_source_id_lock_state_reads_and_parses_file() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("present.lock");
+        let state = SourceIdLockState {
+            pid: 7,
+            created_at_ms: 123,
+        };
+        fs::write(&path, serialize_source_id_lock_state(state)).unwrap();
+        assert_eq!(read_source_id_lock_state(&path), Some(state));
+    }
+
+    #[test]
+    fn test_read_source_id_lock_state_returns_none_when_file_missing() {
+        let temp = TempDir::new().unwrap();
+        let missing = temp.path().join("missing.lock");
+        assert!(read_source_id_lock_state(&missing).is_none());
+    }
+
+    #[test]
+    fn test_remove_source_id_lock_if_matches_deletes_only_on_exact_match() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("match.lock");
+        let state = SourceIdLockState {
+            pid: 10,
+            created_at_ms: 1000,
+        };
+        fs::write(&path, serialize_source_id_lock_state(state)).unwrap();
+
+        // Wrong expected state → do not delete.
+        let other = SourceIdLockState {
+            pid: 11,
+            created_at_ms: 1000,
+        };
+        assert!(!remove_source_id_lock_if_matches(&path, Some(other)));
+        assert!(path.exists());
+
+        // Matching expected state → delete.
+        assert!(remove_source_id_lock_if_matches(&path, Some(state)));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn test_remove_source_id_lock_if_matches_returns_false_when_file_missing() {
+        let temp = TempDir::new().unwrap();
+        let missing = temp.path().join("gone.lock");
+        assert!(!remove_source_id_lock_if_matches(&missing, None));
+    }
+
+    // =====================================================================
+    // read_source_id / write_source_id
+    // =====================================================================
+
+    #[test]
+    fn test_read_source_id_returns_trimmed_content() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("source-id");
+        fs::write(&path, "  abc-123  \n").unwrap();
+        assert_eq!(read_source_id(&path).as_deref(), Some("abc-123"));
+    }
+
+    #[test]
+    fn test_read_source_id_returns_none_for_empty_file() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("empty");
+        fs::write(&path, "   \n").unwrap();
+        assert!(read_source_id(&path).is_none());
+    }
+
+    #[test]
+    fn test_read_source_id_returns_none_when_file_missing() {
+        let temp = TempDir::new().unwrap();
+        let missing = temp.path().join("never-written");
+        assert!(read_source_id(&missing).is_none());
+    }
+
+    #[test]
+    fn test_write_source_id_creates_file_with_trailing_newline() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("source-id");
+        write_source_id(&path, "fresh-id").unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "fresh-id\n");
+    }
+
+    #[test]
+    fn test_write_source_id_overwrites_existing_file_atomically() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("source-id");
+        fs::write(&path, "old-id\n").unwrap();
+        write_source_id(&path, "new-id").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new-id\n");
+
+        // Temp file name is of the form "source-id.tmp-<pid>"; it must not
+        // be left behind after a successful rename.
+        let temp_pattern = format!("source-id.tmp-{}", std::process::id());
+        assert!(!temp.path().join(temp_pattern).exists());
+    }
+
+    // =====================================================================
+    // get_device_name
+    // =====================================================================
+
+    #[test]
+    fn test_get_device_name_is_prefixed_with_cli_on() {
+        let name = get_device_name();
+        assert!(
+            name.starts_with("CLI on "),
+            "unexpected device name format: {}",
+            name
+        );
+        assert!(
+            name.len() > "CLI on ".len(),
+            "device name missing host component: {}",
+            name
+        );
+    }
+
+    // =====================================================================
+    // should_remove_stale_source_id_lock: remaining branches
+    // =====================================================================
+
+    #[test]
+    fn test_should_not_remove_lock_when_owner_dead_but_age_below_stale_threshold() {
+        // Dead owner alone is not enough; we still need SOURCE_ID_LOCK_STALE_AFTER.
+        let tiny = Duration::from_millis(100);
+        assert!(!should_remove_stale_source_id_lock(tiny, Some(false)));
+    }
+
+    #[test]
+    fn test_should_not_remove_lock_when_probe_unknown_but_age_below_stale_threshold() {
+        let tiny = Duration::from_millis(100);
+        assert!(!should_remove_stale_source_id_lock(tiny, None));
+    }
+
+    // =====================================================================
+    // acquire_source_id_lock end-to-end
+    // =====================================================================
+
+    #[test]
+    #[serial]
+    fn test_acquire_source_id_lock_creates_and_drops_lock_file() {
+        let temp_dir = TempDir::new().unwrap();
+        unsafe {
+            env::set_var("HOME", temp_dir.path());
+        }
+
+        let lock_path = get_source_id_lock_path().unwrap();
+        {
+            let _lock = acquire_source_id_lock().unwrap();
+            assert!(lock_path.exists());
+        }
+        assert!(!lock_path.exists(), "lock should be released on Drop");
+
+        unsafe {
+            env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_acquire_source_id_lock_takes_over_a_stale_lock_past_force_threshold() {
+        let temp_dir = TempDir::new().unwrap();
+        unsafe {
+            env::set_var("HOME", temp_dir.path());
+        }
+
+        ensure_config_dir().unwrap();
+        let lock_path = get_source_id_lock_path().unwrap();
+
+        // Plant a stale lock with an ancient created_at_ms — past the
+        // FORCE_STALE threshold, so the acquire loop must reclaim it.
+        let ancient = SourceIdLockState {
+            pid: u32::MAX, // Very unlikely to match a real PID on this host.
+            created_at_ms: 1, // epoch-adjacent
+        };
+        fs::write(&lock_path, serialize_source_id_lock_state(ancient)).unwrap();
+
+        {
+            let lock = acquire_source_id_lock().unwrap();
+            // The new owner's state replaces the stale one.
+            let on_disk = read_source_id_lock_state(&lock_path).unwrap();
+            assert_ne!(on_disk, ancient);
+            assert_eq!(on_disk.pid, std::process::id());
+            drop(lock);
+        }
+        assert!(!lock_path.exists());
+
+        unsafe {
+            env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_source_id_path_is_under_home_config_tokscale() {
+        let temp_dir = TempDir::new().unwrap();
+        unsafe {
+            env::set_var("HOME", temp_dir.path());
+        }
+
+        let expected = temp_dir.path().join(".config/tokscale/source-id");
+        assert_eq!(get_source_id_path().unwrap(), expected);
+
+        let lock_expected = temp_dir.path().join(".config/tokscale/source-id.lock");
+        assert_eq!(get_source_id_lock_path().unwrap(), lock_expected);
+
+        unsafe {
+            env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_submit_source_id_uses_env_override_skipping_disk() {
+        // Covers the early return that does NOT touch the config dir.
+        let temp_dir = TempDir::new().unwrap();
+        unsafe {
+            env::set_var("HOME", temp_dir.path());
+            env::set_var("TOKSCALE_SOURCE_ID", "env-wins");
+        }
+
+        let result = get_submit_source_id().unwrap();
+        assert_eq!(result.as_deref(), Some("env-wins"));
+        // No disk file was created.
+        assert!(!get_source_id_path().unwrap().exists());
+
+        unsafe {
+            env::remove_var("TOKSCALE_SOURCE_ID");
+            env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_submit_source_id_falls_through_when_env_is_whitespace() {
+        let temp_dir = TempDir::new().unwrap();
+        unsafe {
+            env::set_var("HOME", temp_dir.path());
+            env::set_var("TOKSCALE_SOURCE_ID", "   ");
+        }
+
+        let id = get_submit_source_id().unwrap().unwrap();
+        assert!(!id.is_empty());
+        // Whitespace-only env var is ignored; value is persisted.
+        assert!(get_source_id_path().unwrap().exists());
+
+        unsafe {
+            env::remove_var("TOKSCALE_SOURCE_ID");
+            env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_submit_source_name_falls_back_to_device_name() {
+        unsafe {
+            env::remove_var("TOKSCALE_SOURCE_NAME");
+        }
+        let name = get_submit_source_name().unwrap();
+        assert!(
+            name.starts_with("CLI on "),
+            "fallback must use get_device_name: {}",
+            name
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_submit_source_name_ignores_whitespace_only_env() {
+        unsafe {
+            env::set_var("TOKSCALE_SOURCE_NAME", "   ");
+        }
+        let name = get_submit_source_name().unwrap();
+        assert!(
+            name.starts_with("CLI on "),
+            "whitespace env should fall back to device name: {}",
+            name
+        );
+        unsafe {
+            env::remove_var("TOKSCALE_SOURCE_NAME");
+        }
+    }
+
+    // =====================================================================
+    // current_unix_ms (trivial but covers the happy path)
+    // =====================================================================
+
+    #[test]
+    fn test_current_unix_ms_is_in_plausible_range() {
+        let now = current_unix_ms();
+        // 2025-01-01 UTC = 1735689600000 ms — we expect something later.
+        assert!(now > 1_735_689_600_000, "clock reported unexpected time: {}", now);
+    }
 }
