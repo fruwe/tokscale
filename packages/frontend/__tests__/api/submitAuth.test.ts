@@ -3,7 +3,6 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const mockState = vi.hoisted(() => {
   const authenticatePersonalToken = vi.fn();
   const validateSubmission = vi.fn();
-  const generateSubmissionHash = vi.fn(() => "submission-hash");
   const revalidateTag = vi.fn();
   const mergeClientBreakdowns = vi.fn();
   const recalculateDayTotals = vi.fn();
@@ -79,7 +78,6 @@ const mockState = vi.hoisted(() => {
   return {
     authenticatePersonalToken,
     validateSubmission,
-    generateSubmissionHash,
     revalidateTag,
     mergeClientBreakdowns,
     recalculateDayTotals,
@@ -98,7 +96,6 @@ const mockState = vi.hoisted(() => {
     reset() {
       authenticatePersonalToken.mockReset();
       validateSubmission.mockReset();
-      generateSubmissionHash.mockClear();
       revalidateTag.mockClear();
       mergeClientBreakdowns.mockReset();
       recalculateDayTotals.mockReset();
@@ -137,7 +134,6 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/validation/submission", () => ({
   validateSubmission: mockState.validateSubmission,
-  generateSubmissionHash: mockState.generateSubmissionHash,
 }));
 
 vi.mock("@/lib/db/helpers", () => ({

@@ -171,7 +171,6 @@ export const submissions = pgTable(
     status: varchar("status", { length: 20 }).notNull().default("verified"),
 
     cliVersion: varchar("cli_version", { length: 20 }),
-    submissionHash: varchar("submission_hash", { length: 64 }),
     submitCount: integer("submit_count").notNull().default(1),
     /** 0=legacy (no timestamps), 1=timestamp-aware CLI */
     schemaVersion: integer("schema_version").notNull().default(0),

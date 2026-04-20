@@ -4,7 +4,6 @@ import { db, apiTokens, submissions, dailyBreakdown } from "@/lib/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   validateSubmission,
-  generateSubmissionHash,
   type SubmissionData,
 } from "@/lib/validation/submission";
 import { authenticatePersonalToken } from "@/lib/auth/personalTokens";
@@ -198,13 +197,6 @@ export async function POST(request: Request) {
     if (submittedClients.has("kilo")) {
       submittedClients.add("kilocode" as SubmissionData["summary"]["clients"][number]);
     }
-    const hashData: SubmissionData = {
-      ...data,
-      summary: {
-        ...data.summary,
-        clients: Array.from(submittedClients).sort(),
-      },
-    };
     const sourceId = normalizeOptionalString(data.meta.sourceId);
     const sourceName = sourceId
       ? normalizeOptionalString(data.meta.sourceName)
@@ -267,7 +259,6 @@ export async function POST(request: Request) {
             modelsUsed: [],
             status: "verified",
             cliVersion: data.meta.version,
-            submissionHash: generateSubmissionHash(hashData),
           })
           .onConflictDoNothing()
           .returning({ id: submissions.id });
@@ -519,7 +510,6 @@ export async function POST(request: Request) {
         sourcesUsed: Array.from(allClients),
         modelsUsed: Array.from(allModels),
         cliVersion: data.meta.version,
-        submissionHash: generateSubmissionHash(hashData),
         submitCount: sql`COALESCE(submit_count, 0) + 1`,
         schemaVersion: sql`GREATEST(COALESCE(${submissions.schemaVersion}, 0), ${data.contributions.some((c) => c.timestampMs != null) ? 1 : 0})`,
         updatedAt: new Date(),

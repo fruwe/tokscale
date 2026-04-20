@@ -625,12 +625,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "submission_hash": {
-          "name": "submission_hash",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "submit_count": {
           "name": "submit_count",
           "type": "integer",
