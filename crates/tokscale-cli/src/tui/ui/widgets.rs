@@ -235,6 +235,7 @@ pub fn get_client_color(client: &str) -> Color {
         "droid" => Color::Rgb(16, 185, 129),   // #10b981
         "openclaw" => Color::Rgb(239, 68, 68), // #ef4444
         "hermes" => Color::Rgb(255, 215, 0),   // #ffd700
+        "goose" => Color::Rgb(100, 180, 220),  // #64b4dc
         _ => Color::Rgb(136, 136, 136),        // #888888
     }
 }

@@ -972,6 +972,17 @@ fn parse_all_messages_with_pricing_with_env_strategy(
         all_messages.extend(hermes_messages);
     }
 
+    if let Some(db_path) = &scan_result.goose_db {
+        let goose_messages: Vec<UnifiedMessage> = sessions::goose::parse_goose_sqlite(db_path)
+            .into_iter()
+            .map(|mut msg| {
+                apply_pricing_if_available(&mut msg, pricing);
+                msg
+            })
+            .collect();
+        all_messages.extend(goose_messages);
+    }
+
     for source in &scan_result.crush_dbs {
         let crush_messages: Vec<UnifiedMessage> =
             sessions::crush::parse_crush_sqlite(&source.db_path)
@@ -1842,6 +1853,16 @@ pub fn parse_local_clients(options: LocalParseOptions) -> Result<ParsedMessages,
         let count = summed_parsed_message_count(&hermes_msgs);
         counts.set(ClientId::Hermes, count);
         messages.extend(hermes_msgs);
+    }
+
+    if let Some(db_path) = &scan_result.goose_db {
+        let goose_msgs: Vec<ParsedMessage> = sessions::goose::parse_goose_sqlite(db_path)
+            .into_iter()
+            .map(|msg| unified_to_parsed(&msg))
+            .collect();
+        let count = summed_parsed_message_count(&goose_msgs);
+        counts.set(ClientId::Goose, count);
+        messages.extend(goose_msgs);
     }
 
     let crush_msgs: Vec<ParsedMessage> = scan_result

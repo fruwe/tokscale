@@ -1369,6 +1369,7 @@ fn client_display_name(client: &str) -> Option<&'static str> {
         "kilo" => Some("Kilo CLI"),
         "mux" => Some("Mux"),
         "crush" => Some("Crush"),
+        "goose" => Some("Goose"),
         "synthetic" => Some("Synthetic"),
         _ => None,
     }

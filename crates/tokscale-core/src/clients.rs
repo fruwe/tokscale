@@ -301,6 +301,15 @@ define_clients!(
         headless: false,
         parse_local: true,
         submit_default: true
+    },
+    Goose = 18 => {
+        id: "goose",
+        root: PathRoot::XdgData,
+        relative: "goose/sessions/sessions.db",
+        pattern: "sessions.db",
+        headless: false,
+        parse_local: true,
+        submit_default: true
     }
 );
 
@@ -353,7 +362,7 @@ mod tests {
 
     #[test]
     fn test_client_id_count() {
-        assert_eq!(ClientId::COUNT, 18);
+        assert_eq!(ClientId::COUNT, 19);
     }
 
     #[test]

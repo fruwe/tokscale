@@ -606,6 +606,8 @@ pub struct ClientFlags {
     pub mux: bool,
     #[arg(long, help = "Show only Crush usage")]
     pub crush: bool,
+    #[arg(long, help = "Show only Goose usage")]
+    pub goose: bool,
     #[arg(long, help = "Show only Synthetic usage")]
     pub synthetic: bool,
 }
@@ -648,6 +650,7 @@ fn build_client_filter(flags: ClientFlags) -> Option<Vec<String>> {
         (ClientId::Kilo, flags.kilo),
         (ClientId::Mux, flags.mux),
         (ClientId::Crush, flags.crush),
+        (ClientId::Goose, flags.goose),
     ]
     .into_iter()
     .filter(|(_, enabled)| *enabled)
@@ -2324,6 +2327,7 @@ fn capitalize_client(client: &str) -> String {
         "crush" => "Crush".to_string(),
         "openclaw" => "openclaw".to_string(),
         "hermes" => "Hermes Agent".to_string(),
+        "goose" => "Goose".to_string(),
         "pi" => "Pi".to_string(),
         other => other.to_string(),
     }
@@ -3883,6 +3887,7 @@ mod tests {
             kilo: false,
             mux: false,
             crush: false,
+            goose: false,
             synthetic: false,
         };
         assert_eq!(build_client_filter(flags), None);
@@ -3909,6 +3914,7 @@ mod tests {
             kilo: false,
             mux: false,
             crush: false,
+            goose: false,
             synthetic: false,
         };
         assert_eq!(
@@ -3938,6 +3944,7 @@ mod tests {
             kilo: false,
             mux: false,
             crush: false,
+            goose: false,
             synthetic: false,
         };
         assert_eq!(
@@ -3971,6 +3978,7 @@ mod tests {
             kilo: false,
             mux: false,
             crush: false,
+            goose: false,
             synthetic: true,
         };
         assert_eq!(
@@ -4000,6 +4008,7 @@ mod tests {
             kilo: true,
             mux: true,
             crush: true,
+            goose: true,
             synthetic: true,
         };
         let result = build_client_filter(flags);
@@ -4025,6 +4034,7 @@ mod tests {
         assert!(sources.contains(&"kilo".to_string()));
         assert!(sources.contains(&"mux".to_string()));
         assert!(sources.contains(&"crush".to_string()));
+        assert!(sources.contains(&"goose".to_string()));
         assert!(sources.contains(&"synthetic".to_string()));
     }
 

@@ -69,6 +69,7 @@ pub struct ScanResult {
     pub synthetic_db: Option<PathBuf>,
     pub kilo_db: Option<PathBuf>,
     pub hermes_db: Option<PathBuf>,
+    pub goose_db: Option<PathBuf>,
     pub crush_dbs: Vec<CrushDbSource>,
     /// Path to the OpenCode legacy JSON directory (for migration cache stat checks)
     pub opencode_json_dir: Option<PathBuf>,
@@ -82,6 +83,7 @@ impl Default for ScanResult {
             synthetic_db: None,
             kilo_db: None,
             hermes_db: None,
+            goose_db: None,
             crush_dbs: Vec::new(),
             opencode_json_dir: None,
         }
@@ -434,7 +436,7 @@ fn supports_extra_dir_scanning(client_id: ClientId) -> bool {
     // registry rather than scanned file paths.
     !matches!(
         client_id,
-        ClientId::Kilo | ClientId::Crush | ClientId::Hermes
+        ClientId::Kilo | ClientId::Crush | ClientId::Hermes | ClientId::Goose
     )
 }
 
@@ -571,6 +573,7 @@ fn scan_all_clients_with_env_strategy_inner(
                 | ClientId::KiloCode
                 | ClientId::Kilo
                 | ClientId::Hermes
+                | ClientId::Goose
                 | ClientId::Crush
         ) {
             continue;
@@ -793,6 +796,52 @@ fn scan_all_clients_with_env_strategy_inner(
             .resolve_path_with_env_strategy(home_dir, use_env_roots);
         if std::path::Path::new(&hermes_db_path).exists() {
             result.hermes_db = Some(PathBuf::from(hermes_db_path));
+        }
+    }
+
+    if enabled.contains(&ClientId::Goose) {
+        if use_env_roots {
+            if let Ok(custom_root) = std::env::var("GOOSE_PATH_ROOT") {
+                let custom_path = PathBuf::from(custom_root).join("data/sessions/sessions.db");
+                if custom_path.exists() {
+                    result.goose_db = Some(custom_path);
+                }
+            }
+        }
+        if result.goose_db.is_none() {
+            let xdg_path = ClientId::Goose
+                .data()
+                .resolve_path_with_env_strategy(home_dir, use_env_roots);
+            if std::path::Path::new(&xdg_path).exists() {
+                result.goose_db = Some(PathBuf::from(xdg_path));
+            }
+        }
+        if result.goose_db.is_none() {
+            let macos_path = PathBuf::from(format!(
+                "{}/Library/Application Support/goose/sessions/sessions.db",
+                home_dir
+            ));
+            if macos_path.exists() {
+                result.goose_db = Some(macos_path);
+            }
+        }
+        if result.goose_db.is_none() {
+            let legacy_macos_path = PathBuf::from(format!(
+                "{}/Library/Application Support/Block/goose/sessions/sessions.db",
+                home_dir
+            ));
+            if legacy_macos_path.exists() {
+                result.goose_db = Some(legacy_macos_path);
+            }
+        }
+        if result.goose_db.is_none() {
+            let legacy_xdg_path = PathBuf::from(format!(
+                "{}/.local/share/Block/goose/sessions/sessions.db",
+                home_dir
+            ));
+            if legacy_xdg_path.exists() {
+                result.goose_db = Some(legacy_xdg_path);
+            }
         }
     }
 
