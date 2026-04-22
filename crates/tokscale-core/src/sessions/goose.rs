@@ -1,8 +1,9 @@
 //! Goose session parser
 //!
 //! Parses session rows from Goose's SQLite sessions database:
-//! - macOS: `~/Library/Application Support/Block/goose/sessions/sessions.db`
-//! - Linux: `~/.local/share/Block/goose/sessions/sessions.db`
+//! - Primary: `~/.local/share/goose/sessions/sessions.db`
+//! - macOS: `~/Library/Application Support/goose/sessions/sessions.db`
+//! - Legacy Block/goose: `~/.local/share/Block/goose/sessions/sessions.db`
 //! - Custom: `$GOOSE_PATH_ROOT/data/sessions/sessions.db`
 
 use super::UnifiedMessage;
@@ -42,6 +43,23 @@ fn resolved_provider(provider_name: Option<String>, model_id: &str) -> String {
         .and_then(|p| provider_identity::canonical_provider(p.trim()))
         .or_else(|| provider_identity::inferred_provider_from_model(model_id).map(str::to_string))
         .unwrap_or_else(|| "goose".to_string())
+}
+
+fn parse_created_at(s: &str) -> f64 {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return dt.timestamp_millis() as f64;
+    }
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        return dt.and_utc().timestamp_millis() as f64;
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        return date
+            .and_hms_opt(0, 0, 0)
+            .unwrap_or_default()
+            .and_utc()
+            .timestamp_millis() as f64;
+    }
+    0.0
 }
 
 pub fn parse_goose_sqlite(db_path: &Path) -> Vec<UnifiedMessage> {
@@ -95,12 +113,12 @@ pub fn parse_goose_sqlite(db_path: &Path) -> Vec<UnifiedMessage> {
             row.get::<_, Option<String>>(1)?,
             row.get::<_, Option<String>>(2)?,
             row.get::<_, String>(3)?,
-            row.get::<_, Option<i32>>(4)?,
-            row.get::<_, Option<i32>>(5)?,
-            row.get::<_, Option<i32>>(6)?,
-            row.get::<_, Option<i32>>(7)?,
-            row.get::<_, Option<i32>>(8)?,
-            row.get::<_, Option<i32>>(9)?,
+            row.get::<_, Option<i64>>(4)?,
+            row.get::<_, Option<i64>>(5)?,
+            row.get::<_, Option<i64>>(6)?,
+            row.get::<_, Option<i64>>(7)?,
+            row.get::<_, Option<i64>>(8)?,
+            row.get::<_, Option<i64>>(9)?,
         ))
     }) {
         Ok(r) => r,
@@ -141,23 +159,20 @@ pub fn parse_goose_sqlite(db_path: &Path) -> Vec<UnifiedMessage> {
             let model_config = model_config_json.as_ref()?;
             let model_id = parse_model_config(model_config)?;
 
-            let created_at_ts = chrono::DateTime::parse_from_rfc3339(&created_at)
-                .ok()
-                .map(|dt| dt.timestamp_millis() as f64)
-                .unwrap_or(0.0);
+            let created_at_ts = parse_created_at(&created_at);
 
             let input = accumulated_input_tokens
                 .or(input_tokens)
                 .unwrap_or(0)
-                .max(0) as i64;
+                .max(0);
             let output = accumulated_output_tokens
                 .or(output_tokens)
                 .unwrap_or(0)
-                .max(0) as i64;
+                .max(0);
             let total = accumulated_total_tokens
                 .or(total_tokens)
                 .unwrap_or(0)
-                .max(0) as i64;
+                .max(0);
 
             if input == 0 && output == 0 && total == 0 {
                 return None;
@@ -218,5 +233,33 @@ mod tests {
     fn test_timestamp_secs_to_ms() {
         assert_eq!(timestamp_secs_to_ms(1_700_000_000.0), 1_700_000_000_000);
         assert_eq!(timestamp_secs_to_ms(1_700_000_000_000.0), 1_700_000_000_000);
+    }
+
+    #[test]
+    fn test_parse_created_at_rfc3339() {
+        let ts = parse_created_at("2026-04-14T16:18:53Z");
+        assert!(ts > 0.0);
+    }
+
+    #[test]
+    fn test_parse_created_at_sqlite_timestamp() {
+        let ts = parse_created_at("2026-04-14 16:18:53");
+        assert!(ts > 0.0);
+        let expected = chrono::NaiveDateTime::parse_from_str("2026-04-14 16:18:53", "%Y-%m-%d %H:%M:%S")
+            .unwrap()
+            .and_utc()
+            .timestamp_millis() as f64;
+        assert_eq!(ts, expected);
+    }
+
+    #[test]
+    fn test_parse_created_at_date_only() {
+        let ts = parse_created_at("2026-04-14");
+        assert!(ts > 0.0);
+    }
+
+    #[test]
+    fn test_parse_created_at_invalid() {
+        assert_eq!(parse_created_at("not a date"), 0.0);
     }
 }

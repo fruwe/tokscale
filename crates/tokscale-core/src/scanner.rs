@@ -802,9 +802,12 @@ fn scan_all_clients_with_env_strategy_inner(
     if enabled.contains(&ClientId::Goose) {
         if use_env_roots {
             if let Ok(custom_root) = std::env::var("GOOSE_PATH_ROOT") {
-                let custom_path = PathBuf::from(custom_root).join("data/sessions/sessions.db");
-                if custom_path.exists() {
-                    result.goose_db = Some(custom_path);
+                let trimmed = custom_root.trim();
+                if !trimmed.is_empty() {
+                    let custom_path = PathBuf::from(trimmed).join("data/sessions/sessions.db");
+                    if custom_path.is_file() {
+                        result.goose_db = Some(custom_path);
+                    }
                 }
             }
         }
@@ -812,8 +815,9 @@ fn scan_all_clients_with_env_strategy_inner(
             let xdg_path = ClientId::Goose
                 .data()
                 .resolve_path_with_env_strategy(home_dir, use_env_roots);
-            if std::path::Path::new(&xdg_path).exists() {
-                result.goose_db = Some(PathBuf::from(xdg_path));
+            let xdg = PathBuf::from(xdg_path);
+            if xdg.is_file() {
+                result.goose_db = Some(xdg);
             }
         }
         if result.goose_db.is_none() {
@@ -821,7 +825,7 @@ fn scan_all_clients_with_env_strategy_inner(
                 "{}/Library/Application Support/goose/sessions/sessions.db",
                 home_dir
             ));
-            if macos_path.exists() {
+            if macos_path.is_file() {
                 result.goose_db = Some(macos_path);
             }
         }
@@ -830,7 +834,7 @@ fn scan_all_clients_with_env_strategy_inner(
                 "{}/Library/Application Support/Block/goose/sessions/sessions.db",
                 home_dir
             ));
-            if legacy_macos_path.exists() {
+            if legacy_macos_path.is_file() {
                 result.goose_db = Some(legacy_macos_path);
             }
         }
@@ -839,7 +843,7 @@ fn scan_all_clients_with_env_strategy_inner(
                 "{}/.local/share/Block/goose/sessions/sessions.db",
                 home_dir
             ));
-            if legacy_xdg_path.exists() {
+            if legacy_xdg_path.is_file() {
                 result.goose_db = Some(legacy_xdg_path);
             }
         }
